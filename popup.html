@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bookmark Admin</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="mini-shell">
+      <header class="mini-header">
+        <div class="brand-mark">B</div>
+        <div class="title-block">
+          <h1>Save Bookmark</h1>
+          <p id="currentPageMini" class="compact">Loading current tab...</p>
+        </div>
+      </header>
+
+      <label class="field">
+        <span>Save into</span>
+        <select id="saveFolder"></select>
+      </label>
+
+      <div class="mini-actions">
+        <button id="saveToFolder" class="primary" type="button">Save</button>
+        <button id="saveToAll" type="button">All</button>
+        <button id="createFolderMini" type="button">New</button>
+      </div>
+
+      <button id="openManager" class="manager-button" type="button">Open full manager</button>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
