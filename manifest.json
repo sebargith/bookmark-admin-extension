@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Local Bookmark Admin",
+  "description": "A local popup bookmark manager backed by Chrome bookmarks.",
+  "version": "0.3.1",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "bookmarks",
+    "contextMenus",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_title": "Save page to Bookmark Admin",
+    "default_popup": "popup.html"
+  },
+  "commands": {
+    "quick-save-current-page": {
+      "suggested_key": {
+        "default": "Alt+Shift+B"
+      },
+      "description": "Save the current page"
+    },
+    "open-bookmark-admin": {
+      "suggested_key": {
+        "default": "Alt+Shift+M"
+      },
+      "description": "Open Bookmark Admin"
+    }
+  }
+}
