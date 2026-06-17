@@ -3,7 +3,7 @@
   inset: 0;
   z-index: 2147483647;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #172026;
+  color: #eef4ff;
 }
 
 #bookmark-admin-overlay * {
@@ -15,29 +15,32 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 18% 14%, rgba(39, 104, 181, 0.18), transparent 30%),
-    radial-gradient(circle at 82% 12%, rgba(98, 70, 165, 0.16), transparent 26%),
-    rgba(18, 28, 34, 0.28);
-  backdrop-filter: blur(7px) saturate(0.9);
+    radial-gradient(circle at 14% 16%, rgba(26, 118, 255, 0.24), transparent 30%),
+    radial-gradient(circle at 83% 12%, rgba(172, 88, 255, 0.22), transparent 28%),
+    radial-gradient(circle at 76% 78%, rgba(16, 185, 129, 0.16), transparent 25%),
+    rgba(4, 9, 18, 0.58);
+  backdrop-filter: blur(10px) saturate(0.8);
 }
 
 .ba-window {
   position: absolute;
-  top: 54px;
-  right: 46px;
+  top: 34px;
+  right: 34px;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
-  width: min(980px, calc(100vw - 36px));
-  height: min(720px, calc(100vh - 48px));
-  min-width: 680px;
-  min-height: 460px;
+  width: min(1240px, calc(100vw - 36px));
+  height: min(820px, calc(100vh - 42px));
+  min-width: 780px;
+  min-height: 560px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.64);
-  border-radius: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 32px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(247, 251, 255, 0.88)),
-    #ffffff;
-  box-shadow: 0 28px 90px rgba(10, 18, 24, 0.36);
+    linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(17, 24, 39, 0.94)),
+    #0f172a;
+  box-shadow:
+    0 34px 100px rgba(0, 0, 0, 0.52),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   animation: ba-pop 160ms ease-out;
 }
 
@@ -57,12 +60,13 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
-  padding: 14px 16px;
+  padding: 16px 18px;
   cursor: grab;
   user-select: none;
   background:
-    linear-gradient(135deg, rgba(231, 240, 255, 0.96), rgba(233, 246, 239, 0.92)),
-    #ffffff;
+    linear-gradient(135deg, rgba(30, 64, 175, 0.30), rgba(124, 58, 237, 0.22)),
+    rgba(15, 23, 42, 0.96);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .ba-titlebar:active {
@@ -74,17 +78,17 @@
   width: 42px;
   height: 42px;
   place-items: center;
-  border-radius: 18px;
-  background: linear-gradient(135deg, #2768b5, #6246a5);
+  border-radius: 20px;
+  background: linear-gradient(135deg, #38bdf8, #8b5cf6 55%, #f472b6);
   color: #ffffff;
   font-size: 18px;
   font-weight: 850;
-  box-shadow: 0 14px 28px rgba(39, 104, 181, 0.24);
+  box-shadow: 0 18px 34px rgba(56, 189, 248, 0.24);
 }
 
 .ba-title h1 {
   margin: 0;
-  color: #172026;
+  color: #f8fafc;
   font-size: 18px;
   font-weight: 850;
 }
@@ -93,7 +97,7 @@
   margin: 2px 0 0;
   max-width: 520px;
   overflow: hidden;
-  color: #63727a;
+  color: #94a3b8;
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -105,9 +109,9 @@
 .ba-input,
 .ba-textarea {
   border: 1px solid rgba(98, 114, 122, 0.22);
-  border-radius: 15px;
-  background: rgba(255, 255, 255, 0.82);
-  color: #172026;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.76);
+  color: #e5edf8;
   font: inherit;
   transition:
     transform 130ms ease,
@@ -132,20 +136,21 @@
 .ba-button:hover,
 .ba-icon-btn:hover {
   transform: translateY(-1px);
-  border-color: rgba(39, 104, 181, 0.36);
-  box-shadow: 0 12px 24px rgba(24, 32, 37, 0.11);
+  border-color: rgba(56, 189, 248, 0.42);
+  background: rgba(30, 41, 59, 0.94);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.22);
 }
 
 .ba-button.ba-primary {
-  border-color: rgba(34, 107, 85, 0.45);
-  background: linear-gradient(135deg, #226b55, #164e40);
+  border-color: rgba(52, 211, 153, 0.45);
+  background: linear-gradient(135deg, #059669, #0f766e);
   color: #ffffff;
 }
 
 .ba-button.ba-blue {
-  border-color: rgba(39, 104, 181, 0.24);
-  background: #e7f0ff;
-  color: #2768b5;
+  border-color: rgba(56, 189, 248, 0.28);
+  background: rgba(14, 165, 233, 0.14);
+  color: #7dd3fc;
 }
 
 .ba-button.ba-danger,
@@ -155,13 +160,13 @@
 
 .ba-toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 150px 150px auto auto auto;
+  grid-template-columns: minmax(280px, 1fr) 150px 150px 150px auto auto auto;
   gap: 8px;
   align-items: center;
-  padding: 10px 14px;
-  border-top: 1px solid rgba(98, 114, 122, 0.12);
-  border-bottom: 1px solid rgba(98, 114, 122, 0.12);
-  background: rgba(255, 255, 255, 0.74);
+  padding: 12px 16px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(2, 6, 23, 0.48);
 }
 
 .ba-input,
@@ -173,10 +178,10 @@
 
 .ba-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 34%) minmax(0, 1fr) 260px;
-  gap: 10px;
+  grid-template-columns: minmax(340px, 32%) minmax(0, 1fr) 300px;
+  gap: 14px;
   min-height: 0;
-  padding: 12px;
+  padding: 14px;
 }
 
 .ba-panel {
@@ -185,9 +190,12 @@
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(98, 114, 122, 0.18);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 26px;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.90), rgba(15, 23, 42, 0.72)),
+    rgba(15, 23, 42, 0.86);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .ba-panel-header {
@@ -195,13 +203,13 @@
   gap: 8px;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
-  border-bottom: 1px solid rgba(98, 114, 122, 0.12);
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 .ba-panel-header h2 {
   margin: 0;
-  color: #172026;
+  color: #f8fafc;
   font-size: 13px;
   font-weight: 850;
 }
@@ -210,17 +218,19 @@
 .ba-bookmark-list {
   min-height: 0;
   margin: 0;
-  padding: 8px;
+  padding: 10px;
   overflow: auto;
   list-style: none;
 }
 
 .ba-tree-children {
   display: grid;
-  gap: 4px;
-  margin: 4px 0 2px 16px;
+  gap: 6px;
+  margin: 6px 0 4px 18px;
   padding: 0;
   list-style: none;
+  border-left: 1px solid rgba(148, 163, 184, 0.16);
+  padding-left: 8px;
 }
 
 .ba-folder-line,
@@ -232,23 +242,40 @@
   align-items: center;
   width: 100%;
   min-height: 31px;
-  padding: 5px 6px;
-  border: 1px solid transparent;
-  border-radius: 14px;
-  background: transparent;
+  padding: 6px 7px;
+  border: 1px solid rgba(148, 163, 184, 0.13);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(30, 41, 59, 0.88), rgba(15, 23, 42, 0.74)),
+    rgba(15, 23, 42, 0.72);
+}
+
+.ba-folder-line {
+  min-height: 42px;
+  border-color: rgba(56, 189, 248, 0.15);
+  background:
+    linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(139, 92, 246, 0.10)),
+    rgba(15, 23, 42, 0.86);
+  box-shadow: inset 4px 0 0 rgba(56, 189, 248, 0.34);
 }
 
 .ba-folder-line:hover,
 .ba-tree-bookmark:hover,
 .ba-bookmark-row:hover {
-  border-color: rgba(98, 114, 122, 0.18);
-  background: rgba(245, 248, 250, 0.92);
+  border-color: rgba(125, 211, 252, 0.34);
+  background:
+    linear-gradient(135deg, rgba(30, 64, 175, 0.20), rgba(15, 23, 42, 0.86)),
+    rgba(15, 23, 42, 0.92);
 }
 
 .ba-folder-line.ba-selected {
-  border-color: rgba(34, 107, 85, 0.38);
-  background: #e6f4ee;
-  box-shadow: inset 4px 0 0 #226b55;
+  border-color: rgba(52, 211, 153, 0.56);
+  background:
+    linear-gradient(135deg, rgba(5, 150, 105, 0.32), rgba(14, 165, 233, 0.16)),
+    rgba(15, 23, 42, 0.94);
+  box-shadow:
+    inset 4px 0 0 #34d399,
+    0 10px 24px rgba(5, 150, 105, 0.16);
 }
 
 .ba-disclosure {
@@ -258,7 +285,7 @@
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: #63727a;
+  color: #93c5fd;
   cursor: pointer;
 }
 
@@ -268,7 +295,7 @@
   overflow: hidden;
   border: 0;
   background: transparent;
-  color: #172026;
+  color: #e5edf8;
   font: inherit;
   font-size: 13px;
   font-weight: 750;
@@ -282,12 +309,15 @@
 .ba-url,
 .ba-date,
 .ba-muted {
-  color: #63727a;
+  color: #94a3b8;
   font-size: 12px;
 }
 
 .ba-tree-bookmark {
   grid-template-columns: 24px minmax(0, 1fr) auto;
+  min-height: 30px;
+  border-color: rgba(148, 163, 184, 0.08);
+  background: rgba(2, 6, 23, 0.28);
 }
 
 .ba-tree-bookmark .ba-bookmark-title {
@@ -297,15 +327,16 @@
 .ba-bookmark-list {
   display: grid;
   align-content: start;
-  gap: 5px;
+  gap: 4px;
 }
 
 .ba-bookmark-row {
   grid-template-columns: minmax(0, 1fr) 92px auto;
-  min-height: 42px;
-  padding: 7px 8px;
-  border-color: rgba(98, 114, 122, 0.12);
-  background: rgba(255, 255, 255, 0.76);
+  min-height: 36px;
+  padding: 5px 7px;
+  border-color: rgba(148, 163, 184, 0.10);
+  border-radius: 15px;
+  background: rgba(2, 6, 23, 0.32);
 }
 
 .ba-bookmark-meta {
@@ -316,7 +347,7 @@
   display: flex;
   gap: 7px;
   min-width: 0;
-  margin-top: 1px;
+  margin-top: 0;
 }
 
 .ba-url {
@@ -333,7 +364,7 @@
   display: grid;
   height: 100%;
   place-items: center;
-  color: #63727a;
+  color: #94a3b8;
   text-align: center;
 }
 
@@ -345,7 +376,7 @@
 .ba-detail-title {
   min-width: 0;
   overflow: hidden;
-  color: #172026;
+  color: #f8fafc;
   font-weight: 850;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -356,6 +387,7 @@
   min-height: 170px;
   padding: 10px;
   resize: vertical;
+  background: rgba(2, 6, 23, 0.36);
 }
 
 .ba-pills {
@@ -370,31 +402,31 @@
   min-height: 21px;
   padding: 1px 8px;
   border-radius: 999px;
-  background: #e9edf0;
-  color: #344149;
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
   font-size: 12px;
 }
 
 .ba-pill.ba-ok {
-  background: #e3f3e9;
-  color: #17633d;
+  background: rgba(16, 185, 129, 0.16);
+  color: #6ee7b7;
 }
 
 .ba-pill.ba-warning {
-  background: #fff3d2;
-  color: #9a6500;
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
 }
 
 .ba-pill.ba-dead {
-  background: #fde8e6;
-  color: #b3261e;
+  background: rgba(244, 63, 94, 0.16);
+  color: #fb7185;
 }
 
 .ba-footer {
   display: flex;
   justify-content: space-between;
   padding: 8px 14px 12px;
-  color: #63727a;
+  color: #94a3b8;
   font-size: 12px;
 }
 
@@ -403,10 +435,10 @@
   z-index: 2147483647;
   min-width: 190px;
   padding: 6px;
-  border: 1px solid rgba(98, 114, 122, 0.22);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 18px 44px rgba(18, 28, 34, 0.24);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.98);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
 }
 
 .ba-menu button {
@@ -416,20 +448,32 @@
   border: 0;
   border-radius: 11px;
   background: transparent;
-  color: #172026;
+  color: #e5edf8;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 
 .ba-menu button:hover {
-  background: #eff5f3;
+  background: rgba(30, 41, 59, 0.92);
 }
 
 .ba-menu hr {
   margin: 5px 0;
   border: 0;
-  border-top: 1px solid rgba(98, 114, 122, 0.16);
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.ba-folder-tree::-webkit-scrollbar,
+.ba-bookmark-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.ba-folder-tree::-webkit-scrollbar-thumb,
+.ba-bookmark-list::-webkit-scrollbar-thumb {
+  border: 3px solid rgba(15, 23, 42, 0.9);
+  border-radius: 999px;
+  background: rgba(125, 211, 252, 0.32);
 }
 
 .ba-hidden {
