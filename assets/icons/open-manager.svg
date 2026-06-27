@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+
+<defs>
+  <linearGradient id="tealGrad" x1="4" y1="2" x2="20" y2="22" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#38BDF8"/>
+    <stop offset="1" stop-color="#19D3C5"/>
+  </linearGradient>
+  <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+    <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.35"/>
+  </filter>
+</defs>
+
+
+<g stroke-linecap="round" stroke-linejoin="round" filter="url(#softShadow)">
+  <rect x="3.5" y="4" width="17" height="15.5" rx="3" fill="#172033" stroke="#38BDF8" stroke-opacity="0.75" stroke-width="1.4"/>
+  <path d="M6.5 8H11.5M6.5 12H14.5M6.5 16H13" stroke="#64748B" stroke-width="1.5"/>
+  <path d="M15.7 7.5H18.2V14.5L17 13.7L15.7 14.5V7.5Z" fill="#8B5CF6" stroke="#8B5CF6" stroke-width="1"/>
+  <path d="M4.2 7.1H20" stroke="#22324A" stroke-width="1"/>
+</g>
+</svg>

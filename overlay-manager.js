@@ -1,6 +1,21 @@
 (function bookmarkAdminOverlay() {
   const ROOT_ID = "bookmark-admin-overlay";
   const DEFAULT_FOLDER_TITLE = "All";
+  const assetUrl = (path) => chrome.runtime.getURL(`assets/${path}`);
+  const ICONS = {
+    app: assetUrl("app-icon/icon32.png"),
+    bookmark: assetUrl("icons/bookmark-item.svg"),
+    check: assetUrl("icons/dead-link-checker.svg"),
+    export: assetUrl("icons/backup-export.svg"),
+    folderClosed: assetUrl("icons/folder-closed.svg"),
+    folderOpen: assetUrl("icons/folder-open.svg"),
+    folderSelected: assetUrl("icons/folder-selected.svg"),
+    index: assetUrl("icons/filter-tag.svg")
+  };
+  const ILLUSTRATIONS = {
+    emptyLibrary: assetUrl("illustrations/empty-library.svg"),
+    noSearchResults: assetUrl("illustrations/no-search-results.svg")
+  };
   const state = {
     data: null,
     selectedFolderId: null,
@@ -26,7 +41,7 @@
     <div class="ba-backdrop" data-close="true"></div>
     <section class="ba-window" role="dialog" aria-label="Bookmark Admin">
       <header class="ba-titlebar" data-drag="true">
-        <div class="ba-mark">B</div>
+        <div class="ba-mark" aria-hidden="true"><img src="${ICONS.app}" alt=""></div>
         <div class="ba-title">
           <h1>Bookmark Admin</h1>
           <p class="ba-current">Loading bookmarks...</p>
@@ -54,15 +69,15 @@
           <option value="issues">Issues only</option>
           <option value="unused">Never opened</option>
         </select>
-        <button class="ba-button ba-blue ba-check" type="button">Check</button>
-        <button class="ba-button ba-blue ba-index" type="button">Index</button>
-        <button class="ba-button ba-export" type="button">Export</button>
+        <button class="ba-button ba-blue ba-check" type="button"><img src="${ICONS.check}" alt=""><span>Check</span></button>
+        <button class="ba-button ba-blue ba-index" type="button"><img src="${ICONS.index}" alt=""><span>Index</span></button>
+        <button class="ba-button ba-export" type="button"><img src="${ICONS.export}" alt=""><span>Export</span></button>
       </section>
       <section class="ba-layout">
         <section class="ba-panel">
           <div class="ba-panel-header">
             <h2>Library</h2>
-            <button class="ba-button ba-new-folder" type="button">New folder</button>
+            <button class="ba-button ba-new-folder" type="button"><img src="${ICONS.folderOpen}" alt=""><span>New folder</span></button>
           </div>
           <ul class="ba-folder-tree"></ul>
         </section>
@@ -74,7 +89,10 @@
           <div class="ba-bookmark-list"></div>
         </section>
         <aside class="ba-panel ba-detail">
-          <div class="ba-detail-empty">Select Notes from a bookmark menu to edit notes here.</div>
+          <div class="ba-detail-empty">
+            <img class="ba-empty-visual" src="${ILLUSTRATIONS.emptyLibrary}" alt="">
+            <span>Select Notes from a bookmark menu to edit notes here.</span>
+          </div>
         </aside>
       </section>
       <footer class="ba-footer">
@@ -208,6 +226,11 @@
       toggleFolder(folder.id);
     });
 
+    const folderIcon = document.createElement("img");
+    folderIcon.className = "ba-node-icon";
+    folderIcon.alt = "";
+    folderIcon.src = selected ? ICONS.folderSelected : (expanded ? ICONS.folderOpen : ICONS.folderClosed);
+
     const name = document.createElement("button");
     name.type = "button";
     name.className = "ba-name";
@@ -228,7 +251,7 @@
     menu.textContent = "...";
     menu.addEventListener("click", (event) => showFolderMenu(event, folder, isRoot));
 
-    row.append(disclosure, name, count, menu);
+    row.append(disclosure, folderIcon, name, count, menu);
     item.append(row);
 
     if (expanded) {
@@ -254,9 +277,10 @@
       showBookmarkMenu(event, bookmark);
     });
 
-    const spacer = document.createElement("span");
-    spacer.className = "ba-muted";
-    spacer.textContent = "-";
+    const bookmarkIcon = document.createElement("img");
+    bookmarkIcon.className = "ba-node-icon";
+    bookmarkIcon.alt = "";
+    bookmarkIcon.src = ICONS.bookmark;
 
     const title = document.createElement("button");
     title.type = "button";
@@ -273,7 +297,7 @@
       if (bookmark) showBookmarkMenu(event, bookmark);
     });
 
-    item.append(spacer, title, menu);
+    item.append(bookmarkIcon, title, menu);
     return item;
   }
 
@@ -285,10 +309,9 @@
     els.bookmarkList.textContent = "";
 
     if (!bookmarks.length) {
-      const empty = document.createElement("div");
-      empty.className = "ba-detail-empty";
-      empty.textContent = "No bookmarks match these filters.";
-      els.bookmarkList.append(empty);
+      const copy = state.search ? "No bookmarks match these filters." : "This folder does not have bookmarks yet.";
+      const image = state.search ? ILLUSTRATIONS.noSearchResults : ILLUSTRATIONS.emptyLibrary;
+      els.bookmarkList.append(renderEmptyState(copy, image));
       return;
     }
 
@@ -309,6 +332,11 @@
       event.dataTransfer.setData("application/x-bookmark-node", bookmark.id);
       event.dataTransfer.effectAllowed = "move";
     });
+
+    const bookmarkIcon = document.createElement("img");
+    bookmarkIcon.className = "ba-node-icon";
+    bookmarkIcon.alt = "";
+    bookmarkIcon.src = ICONS.bookmark;
 
     const meta = document.createElement("div");
     meta.className = "ba-bookmark-meta";
@@ -339,8 +367,21 @@
     menu.textContent = "...";
     menu.addEventListener("click", (event) => showBookmarkMenu(event, bookmark));
 
-    row.append(meta, date, menu);
+    row.append(bookmarkIcon, meta, date, menu);
     return row;
+  }
+
+  function renderEmptyState(copy, image) {
+    const empty = document.createElement("div");
+    empty.className = "ba-detail-empty";
+    const visual = document.createElement("img");
+    visual.className = "ba-empty-visual";
+    visual.alt = "";
+    visual.src = image;
+    const text = document.createElement("span");
+    text.textContent = copy;
+    empty.append(visual, text);
+    return empty;
   }
 
   function renderPills(bookmark) {
@@ -356,7 +397,8 @@
 
   function renderDetail() {
     if (!state.detailBookmark) {
-      els.detail.innerHTML = '<div class="ba-detail-empty">Select Notes from a bookmark menu to edit notes here.</div>';
+      els.detail.textContent = "";
+      els.detail.append(renderEmptyState("Select Notes from a bookmark menu to edit notes here.", ILLUSTRATIONS.emptyLibrary));
       return;
     }
 

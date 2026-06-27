@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640" fill="none">
+<defs>
+  <linearGradient id="base" x1="0" y1="0" x2="960" y2="640" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#07111F"/>
+    <stop offset="1" stop-color="#111827"/>
+  </linearGradient>
+  <radialGradient id="teal" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(230 120) rotate(60) scale(290 190)">
+    <stop stop-color="#19D3C5" stop-opacity="0.20"/>
+    <stop offset="1" stop-color="#19D3C5" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="violet" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(780 500) rotate(45) scale(310 220)">
+    <stop stop-color="#8B5CF6" stop-opacity="0.14"/>
+    <stop offset="1" stop-color="#8B5CF6" stop-opacity="0"/>
+  </radialGradient>
+  <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+    <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#38BDF8" stroke-opacity="0.045" stroke-width="1"/>
+  </pattern>
+  <filter id="blur"><feGaussianBlur stdDeviation="0.4"/></filter>
+</defs>
+<rect width="960" height="640" fill="url(#base)"/>
+<rect width="960" height="640" fill="url(#grid)"/>
+<rect width="960" height="640" fill="url(#teal)"/>
+<rect width="960" height="640" fill="url(#violet)"/>
+<g opacity="0.32" filter="url(#blur)">
+  <rect x="90" y="80" width="250" height="120" rx="28" stroke="#38BDF8" stroke-opacity="0.18" fill="#E5F3FF" fill-opacity="0.016"/>
+  <rect x="590" y="72" width="230" height="150" rx="30" stroke="#8B5CF6" stroke-opacity="0.13" fill="#E5F3FF" fill-opacity="0.012"/>
+  <rect x="510" y="380" width="320" height="138" rx="32" stroke="#19D3C5" stroke-opacity="0.14" fill="#E5F3FF" fill-opacity="0.012"/>
+  <path d="M130 490H390" stroke="#38BDF8" stroke-opacity="0.12" stroke-width="1.5"/>
+  <path d="M142 530H314" stroke="#8B5CF6" stroke-opacity="0.10" stroke-width="1.5"/>
+</g>
+</svg>

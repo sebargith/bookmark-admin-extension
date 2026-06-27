@@ -9,7 +9,9 @@
   <body>
     <main class="mini-shell">
       <header class="mini-header">
-        <div class="brand-mark">B</div>
+        <div class="brand-mark" aria-hidden="true">
+          <img src="assets/app-icon/icon32.png" alt="">
+        </div>
         <div class="title-block">
           <h1>Save Bookmark</h1>
           <p id="currentPageMini" class="compact">Loading current tab...</p>
@@ -22,12 +24,24 @@
       </label>
 
       <div class="mini-actions">
-        <button id="saveToFolder" class="primary" type="button">Save</button>
-        <button id="saveToAll" type="button">All</button>
-        <button id="createFolderMini" type="button">New</button>
+        <button id="saveToFolder" class="primary" type="button">
+          <img src="assets/icons/quick-save.svg" alt="">
+          <span>Save</span>
+        </button>
+        <button id="saveToAll" type="button">
+          <img src="assets/icons/folder-selected.svg" alt="">
+          <span>All</span>
+        </button>
+        <button id="createFolderMini" type="button">
+          <img src="assets/icons/folder-open.svg" alt="">
+          <span>New</span>
+        </button>
       </div>
 
-      <button id="openManager" class="manager-button" type="button">Open full manager</button>
+      <button id="openManager" class="manager-button" type="button">
+        <img src="assets/icons/open-manager.svg" alt="">
+        <span>Open full manager</span>
+      </button>
     </main>
 
     <script src="popup.js"></script>

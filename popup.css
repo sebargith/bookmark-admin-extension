@@ -52,6 +52,10 @@ select {
 }
 
 button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   min-height: 38px;
   padding: 0 14px;
   background: rgba(15, 23, 42, 0.78);
@@ -74,6 +78,12 @@ button.primary {
   border-color: rgba(34, 107, 85, 0.55);
   background: linear-gradient(135deg, var(--green), var(--green-2));
   color: #ffffff;
+}
+
+button img {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
 }
 
 select {
@@ -124,6 +134,12 @@ h1 {
   color: #ffffff;
   font-weight: 850;
   box-shadow: 0 14px 28px rgba(56, 189, 248, 0.22);
+}
+
+.brand-mark img {
+  width: 32px;
+  height: 32px;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.24));
 }
 
 .title-block {
