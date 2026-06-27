@@ -108,10 +108,12 @@ async function createFolder() {
 }
 
 async function openManagerOverlay() {
+  const managerUrl = chrome.runtime.getURL("manager.html");
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab || tab.id === undefined) throw new Error("No active tab available.");
-  if (!isSaveableUrl(tab.url)) {
-    throw new Error("The full manager overlay can only open on normal http or https pages.");
+  if (!tab || tab.id === undefined || !isSaveableUrl(tab.url)) {
+    await chrome.tabs.create({ url: managerUrl });
+    window.close();
+    return;
   }
 
   await chrome.scripting.insertCSS({

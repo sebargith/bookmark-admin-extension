@@ -1,6 +1,7 @@
 (function bookmarkAdminOverlay() {
   const ROOT_ID = "bookmark-admin-overlay";
   const DEFAULT_FOLDER_TITLE = "All";
+  const IS_STANDALONE = document.documentElement.dataset.bookmarkAdminMode === "standalone";
   const assetUrl = (path) => chrome.runtime.getURL(`assets/${path}`);
   const ICONS = {
     app: assetUrl("app-icon/icon32.png"),
@@ -131,7 +132,9 @@
   load().catch(showError);
 
   function bindEvents() {
-    els.backdrop.addEventListener("pointerdown", closeOverlay);
+    els.backdrop.addEventListener("pointerdown", () => {
+      if (!IS_STANDALONE) closeOverlay();
+    });
     els.close.addEventListener("click", closeOverlay);
     els.win.addEventListener("pointerdown", (event) => event.stopPropagation());
     els.search.addEventListener("input", () => {
@@ -188,7 +191,7 @@
     state.data = await send("getState");
     state.selectedFolderId = state.selectedFolderId || state.data.managedRoot.id;
     state.expanded.add(state.data.managedRoot.id);
-    els.current.textContent = location.href;
+    els.current.textContent = IS_STANDALONE ? "Standalone manager" : location.href;
     render();
     if (status) setStatus(status);
   }
@@ -743,6 +746,12 @@
   }
 
   function closeOverlay() {
+    if (IS_STANDALONE) {
+      window.close();
+      setStatus("Close this tab to leave the manager.");
+      return;
+    }
+
     document.removeEventListener("keydown", onKeyDown, true);
     root.remove();
   }

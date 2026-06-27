@@ -1294,17 +1294,29 @@ async function injectManagerOverlay(tabId) {
   });
 }
 
+async function openStandaloneManager() {
+  await chromeCall(chrome.tabs.create.bind(chrome.tabs), {
+    url: chrome.runtime.getURL("manager.html")
+  });
+}
+
 async function openManagerSurface(tabId) {
+  if (!tabId) {
+    await openStandaloneManager();
+    return;
+  }
+
   try {
+    const tab = await chromeCall(chrome.tabs.get.bind(chrome.tabs), tabId);
+    if (!isHttpUrl(tab && tab.url)) {
+      await openStandaloneManager();
+      return;
+    }
+
     await injectManagerOverlay(tabId);
   } catch (error) {
     console.error(error);
-    await chrome.windows.create({
-      url: chrome.runtime.getURL("popup.html"),
-      type: "popup",
-      width: 390,
-      height: 300
-    });
+    await openStandaloneManager();
   }
 }
 
