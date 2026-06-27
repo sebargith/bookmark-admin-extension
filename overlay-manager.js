@@ -50,7 +50,7 @@
         <button class="ba-icon-btn ba-close" type="button" aria-label="Close">x</button>
       </header>
       <section class="ba-toolbar">
-        <input class="ba-input ba-search" type="search" placeholder="Search page words, title, URL, or folder">
+        <input class="ba-input ba-search" type="search" placeholder="Search title, folder, tags, or page words">
         <select class="ba-select ba-date-filter">
           <option value="all">Any time</option>
           <option value="today">Added today</option>
@@ -191,7 +191,7 @@
     state.data = await send("getState");
     state.selectedFolderId = state.selectedFolderId || state.data.managedRoot.id;
     state.expanded.add(state.data.managedRoot.id);
-    els.current.textContent = IS_STANDALONE ? "Standalone manager" : location.href;
+    els.current.textContent = IS_STANDALONE ? "Standalone manager" : "Floating manager";
     render();
     if (status) setStatus(status);
   }
@@ -219,6 +219,9 @@
       event.preventDefault();
       showFolderMenu(event, folder, isRoot);
     });
+    row.addEventListener("click", (event) => {
+      if (!event.target.closest("button")) selectFolder(folder.id);
+    });
 
     const disclosure = document.createElement("button");
     disclosure.type = "button";
@@ -226,6 +229,7 @@
     disclosure.textContent = expanded ? "v" : ">";
     disclosure.addEventListener("click", (event) => {
       event.stopPropagation();
+      state.selectedFolderId = folder.id;
       toggleFolder(folder.id);
     });
 
@@ -237,12 +241,8 @@
     const name = document.createElement("button");
     name.type = "button";
     name.className = "ba-name";
-    name.textContent = isRoot ? "Bookmark Admin" : folder.title || "Untitled";
-    name.addEventListener("click", () => {
-      state.selectedFolderId = folder.id;
-      state.expanded.add(folder.id);
-      render();
-    });
+    name.textContent = folderDisplayName(folder, isRoot);
+    name.addEventListener("click", () => selectFolder(folder.id));
 
     const count = document.createElement("span");
     count.className = "ba-count";
@@ -304,10 +304,16 @@
     return item;
   }
 
+  function selectFolder(folderId, expand = true) {
+    state.selectedFolderId = folderId;
+    if (expand) state.expanded.add(folderId);
+    render();
+  }
+
   function renderBookmarks() {
     const folder = folderById(state.selectedFolderId);
     const bookmarks = visibleBookmarks();
-    els.listTitle.textContent = folder ? folder.title || "Bookmark Admin" : "Bookmarks";
+    els.listTitle.textContent = folder ? folderDisplayName(folder, folder.id === state.data.managedRoot.id) : "Bookmarks";
     els.listCount.textContent = `${bookmarks.length} shown`;
     els.bookmarkList.textContent = "";
 
@@ -351,13 +357,10 @@
 
     const sub = document.createElement("div");
     sub.className = "ba-bookmark-sub";
-    const url = document.createElement("span");
-    url.className = "ba-url";
-    url.textContent = compactUrl(bookmark.url);
     const folder = document.createElement("span");
     folder.className = "ba-muted";
     folder.textContent = bookmark.folderPath;
-    sub.append(url, folder);
+    sub.append(folder);
     meta.append(title, sub, renderPills(bookmark));
 
     const date = document.createElement("span");
@@ -778,17 +781,13 @@
     return match;
   }
 
-  function findFlatBookmark(id) {
-    return state.data.bookmarks.find((bookmark) => bookmark.id === id);
+  function folderDisplayName(folder, isRoot = false) {
+    if (isRoot || folder.id === state.data.managedRoot.id) return "All bookmarks";
+    return folder.title || "Untitled";
   }
 
-  function compactUrl(url) {
-    try {
-      const parsed = new URL(url);
-      return `${parsed.hostname}${parsed.pathname === "/" ? "" : parsed.pathname}`;
-    } catch {
-      return url;
-    }
+  function findFlatBookmark(id) {
+    return state.data.bookmarks.find((bookmark) => bookmark.id === id);
   }
 
   function normalizeUrl(url) {

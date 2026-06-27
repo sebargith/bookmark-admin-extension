@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Local Bookmark Admin",
   "description": "A local popup bookmark manager backed by Chrome bookmarks.",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "assets/app-icon/icon16.png",
