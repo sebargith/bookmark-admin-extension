@@ -57,7 +57,9 @@ async function refresh() {
 }
 
 function renderFolders() {
-  const selected = appState.settings.selectedFolderId || appState.defaultFolder.id;
+  const selected = appState.settings.lastSavedFolderId ||
+    appState.settings.selectedFolderId ||
+    appState.defaultFolder.id;
   els.saveFolder.textContent = "";
   for (const folder of appState.folders) {
     const option = document.createElement("option");
@@ -65,7 +67,8 @@ function renderFolders() {
     option.textContent = `${"  ".repeat(Math.max(0, folder.depth - 1))}${folder.path || folder.title}`;
     els.saveFolder.append(option);
   }
-  els.saveFolder.value = selected;
+  const hasSelectedFolder = Array.from(els.saveFolder.options).some((option) => option.value === selected);
+  els.saveFolder.value = hasSelectedFolder ? selected : appState.defaultFolder.id;
 }
 
 async function saveCurrentPage(folderId) {

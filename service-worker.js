@@ -396,12 +396,15 @@ async function ensureManagedArea() {
     defaultFolderId: defaultFolder.id
   };
 
-  if (nextSettings.selectedFolderId) {
-    const selected = await getNode(nextSettings.selectedFolderId);
-    const latestRoot = await getSubTree(managedRoot.id);
-    const latestMap = buildNodeMap(latestRoot);
-    if (!isFolder(selected) || !isDescendantOrSelf(selected.id, managedRoot.id, latestMap)) {
-      nextSettings.selectedFolderId = defaultFolder.id;
+  const latestRoot = await getSubTree(managedRoot.id);
+  const latestMap = buildNodeMap(latestRoot);
+
+  for (const folderSetting of ["selectedFolderId", "lastSavedFolderId"]) {
+    if (nextSettings[folderSetting]) {
+      const selected = await getNode(nextSettings[folderSetting]);
+      if (!isFolder(selected) || !isDescendantOrSelf(selected.id, managedRoot.id, latestMap)) {
+        nextSettings[folderSetting] = defaultFolder.id;
+      }
     }
   }
 
@@ -538,6 +541,15 @@ async function getValidFolderOrDefault(folderId, area) {
   return area.defaultFolder;
 }
 
+async function rememberLastSavedFolder(folder) {
+  if (!isFolder(folder)) return;
+  const settings = await getSettings();
+  await saveSettings({
+    ...settings,
+    lastSavedFolderId: folder.id
+  });
+}
+
 async function updateMetadataForUrl(normalizedUrl, patch) {
   const metadataByUrl = await getMetadataMap();
   const previous = metadataByUrl[normalizedUrl] || {};
@@ -591,6 +603,7 @@ async function saveBookmark(payload = {}) {
       savedAt: now,
       ...pageIndex
     });
+    await rememberLastSavedFolder(targetFolder);
     return {
       duplicate: true,
       created: false,
@@ -614,6 +627,7 @@ async function saveBookmark(payload = {}) {
     savedAt: now,
     ...pageIndex
   });
+  await rememberLastSavedFolder(targetFolder);
 
   return {
     duplicate: false,
