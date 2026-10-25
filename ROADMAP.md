@@ -25,10 +25,16 @@ Accepted at 7.3/10 after one independent evaluation revision. See
 [EVALUATION.md](EVALUATION.md) for category scores, fixes, test evidence, and the
 limits of verification.
 
-## 2. Compact, readable lists (planned)
+## 2. Compact, readable lists (implemented; independent evaluation pending)
 
 Consistent row heights, wider titles, hidden URLs with hover/details access,
 compact dates, and fewer visible badges. Verify long titles and resized windows.
+
+Implemented 40px main-list rows and 32px inline tree rows, narrower dates and
+option controls, full title/URL and folder-path hover text, and a compact
+indicator for warning/dead links only. Notes, use counts, and generated keywords
+remain available in the detail panel and search, without enlarging list rows.
+Untitled bookmarks use a readable label instead of showing a raw URL.
 
 ## 3. Details on demand (planned)
 

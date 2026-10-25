@@ -8,6 +8,16 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
 
 (async () => {
   const fixture = createFixture();
+  fixture.find("214").title = "";
+  fixture.storage.metadataByUrl = {
+    "https://example.test/200": {
+      notes: "Synthetic notes retained outside the compact list", useCount: 12,
+      autoTags: ["autokeywordforsearch", "a-long-generated-keyword-that-must-not-enlarge-the-bookmark-row"],
+      deadStatus: { state: "warning", code: 403, message: "Reachable but restricted" }
+    },
+    "https://example.test/201": { deadStatus: { state: "ok", code: 200 } },
+    "https://example.test/210": { deadStatus: { state: "dead", message: "Timed out" } }
+  };
   const artifacts = process.env.BOOKMARK_TEST_ARTIFACTS || fs.mkdtempSync(path.join(os.tmpdir(), "bookmark-admin-ui-"));
   fs.mkdirSync(artifacts, { recursive: true });
   const repo = path.resolve(__dirname, "..");
@@ -54,6 +64,32 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     };
     await waitRows(2);
     const before = copy(fixture.root);
+    assert.equal(await rows.locator(".ba-pill").count(), 0);
+    assert.equal(await rows.locator('.ba-row-status[role="img"]').count(), 1);
+    assert.match(await rows.first().locator(".ba-bookmark-title").getAttribute("title"), /https:\/\/example.test\/200/);
+    assert.equal(await rows.first().locator("time").getAttribute("datetime"), new Date(fixture.find("200").dateAdded).toISOString());
+    assert.ok((await rows.first().locator("time").getAttribute("title")).length > 15);
+    const initialGeometry = await rows.evaluateAll((items) => items.map((row) => ({
+      height: row.getBoundingClientRect().height,
+      titleWidth: row.querySelector(".ba-bookmark-title").getBoundingClientRect().width,
+      width: row.getBoundingClientRect().width
+    })));
+    assert.ok(initialGeometry.every((row) => row.height === 40 && row.titleWidth > row.width * 0.6));
+    await page.getByRole("button", { name: "Options for Library saved page", exact: true }).click();
+    await page.locator(".ba-menu button", { hasText: /^Notes$/ }).click();
+    assert.equal(await page.locator(".ba-detail textarea").inputValue(), "Synthetic notes retained outside the compact list");
+    assert.match(await page.locator(".ba-detail").innerText(), /12 opens/);
+    assert.match(await page.locator(".ba-detail").innerText(), /autokeywordforsearch/);
+    await page.locator(".ba-search").fill("autokeywordforsearch");
+    await waitRows(1);
+    await page.locator(".ba-search").fill("");
+    await waitRows(2);
+    await page.locator(".ba-folder-tree .ba-name", { hasText: /^All$/ }).click();
+    await waitRows(1);
+    assert.equal((await page.locator(".ba-tree-bookmark").first().boundingBox()).height, 32);
+    await page.getByRole("button", { name: /^All in Library/ }).click();
+    await waitRows(2);
+    assertions += 11;
     await page.screenshot({ path: path.join(artifacts, "library-desktop.png"), animations: "disabled" });
     await view("Saved Windows");
     await waitRows(3);
@@ -69,6 +105,10 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     assert.equal(await page.locator(".ba-list-title").innerText(), "nuevo6");
     await view("All Bookmarks");
     await waitRows(10);
+    const untitled = page.locator(".ba-bookmark-list .ba-bookmark-row").filter({ has: page.getByRole("button", { name: "Untitled bookmark", exact: true }) });
+    assert.equal(await untitled.count(), 1);
+    assert.doesNotMatch(await untitled.innerText(), /https?:\/\//);
+    assertions += 2;
     await page.locator(".ba-search").fill("Mobile page");
     await waitRows(1);
     await view("Library");
@@ -136,9 +176,23 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await view("All Bookmarks");
     await waitRows(51);
     await page.screenshot({ path: path.join(artifacts, "all-desktop.png"), animations: "disabled" });
-    for (const viewport of [{ width: 1000, height: 800 }, { width: 390, height: 844 }]) {
-      await page.setViewportSize(viewport);
-      await page.screenshot({ path: path.join(artifacts, `all-${viewport.width}.png`), animations: "disabled" });
+    for (const viewport of [{ width: 1440, height: 1000, resize: true }, { width: 1000, height: 800 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      const manager = page.locator(".ba-window");
+      if (viewport.resize) {
+        const initial = await manager.boundingBox();
+        await page.mouse.move(initial.x + initial.width - 3, initial.y + initial.height - 3);
+        await page.mouse.down();
+        await page.mouse.move(initial.x + 980, initial.y + 650, { steps: 10 });
+        await page.mouse.up();
+        await page.waitForFunction(() => document.querySelector(".ba-window").getBoundingClientRect().width < 1100);
+        const resized = await manager.boundingBox();
+        assert.ok(resized.width < initial.width - 100 && resized.height < initial.height - 50);
+        assertions += 1;
+      } else {
+        await manager.evaluate((node) => { node.style.width = ""; node.style.height = ""; });
+      }
+      await page.screenshot({ path: path.join(artifacts, viewport.resize ? "all-resized.png" : `all-${viewport.width}.png`), animations: "disabled" });
       const layout = await page.evaluate(() => {
         const win = document.querySelector(".ba-window").getBoundingClientRect();
         const rowRects = [...document.querySelectorAll(".ba-bookmark-list .ba-bookmark-row")].map((node) => node.getBoundingClientRect());
@@ -147,11 +201,12 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
           rowOverlap: rowRects.some((rect, index) => index > 0 && rect.top < rowRects[index - 1].bottom),
           horizontalOverflow: [...document.querySelectorAll(".ba-navigation, .ba-toolbar, .ba-bookmark-list")]
             .some((node) => node.scrollWidth > node.clientWidth + 1),
+          uniformRows: rowRects.every((rect) => rect.height === 40),
           assetsLoaded: [...document.querySelectorAll("img")].every((node) => node.complete && node.naturalWidth > 0)
         };
       });
-      assert.deepEqual(layout, { inViewport: true, rowOverlap: false, horizontalOverflow: false, assetsLoaded: true });
-      assertions += 4;
+      assert.deepEqual(layout, { inViewport: true, rowOverlap: false, horizontalOverflow: false, uniformRows: true, assetsLoaded: true });
+      assertions += 5;
     }
 
     const overlay = await context.newPage();

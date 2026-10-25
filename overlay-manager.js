@@ -434,8 +434,8 @@
     const title = document.createElement("button");
     title.type = "button";
     title.className = "ba-bookmark-title";
-    title.textContent = node.title || node.url;
-    title.title = `${node.title || node.url}\n${node.url}`;
+    title.textContent = bookmarkTitle(node);
+    title.title = `${bookmarkTitle(node)}\n${node.url}`;
     title.addEventListener("click", () => openBookmark(node.id).catch(showError));
 
     const menu = document.createElement("button");
@@ -506,8 +506,8 @@
     const title = document.createElement("button");
     title.type = "button";
     title.className = "ba-bookmark-title";
-    title.textContent = bookmark.title || bookmark.url;
-    title.title = `${bookmark.title || bookmark.url}\n${bookmark.url}`;
+    title.textContent = bookmarkTitle(bookmark);
+    title.title = `${bookmarkTitle(bookmark)}\n${bookmark.url}`;
     title.addEventListener("click", () => openBookmark(bookmark.id).catch(showError));
 
     const sub = document.createElement("div");
@@ -515,12 +515,18 @@
     const folder = document.createElement("span");
     folder.className = "ba-muted";
     folder.textContent = bookmark.folderPath;
+    folder.title = bookmark.folderPath;
     sub.append(folder);
-    meta.append(title, sub, renderPills(bookmark));
+    meta.append(title, sub);
 
-    const date = document.createElement("span");
+    const date = document.createElement("time");
     date.className = "ba-date";
     date.textContent = formatDate(bookmark.dateAdded);
+    if (bookmark.dateAdded) {
+      date.dateTime = new Date(bookmark.dateAdded).toISOString();
+      date.title = new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short" }).format(new Date(bookmark.dateAdded));
+      date.setAttribute("aria-label", `Added ${date.title}`);
+    }
 
     const menu = document.createElement("button");
     menu.type = "button";
@@ -528,9 +534,33 @@
     menu.textContent = "...";
     menu.addEventListener("click", (event) => showBookmarkMenu(event, bookmark));
 
-    menu.setAttribute("aria-label", `Options for ${bookmark.title || "bookmark"}`);
-    row.append(bookmarkIcon, meta, date, menu);
+    menu.setAttribute("aria-label", `Options for ${bookmarkTitle(bookmark)}`);
+    row.append(bookmarkIcon, meta, renderLinkIndicator(bookmark), date, menu);
     return row;
+  }
+
+  function bookmarkTitle(bookmark) {
+    return String(bookmark.title || "").trim() || "Untitled bookmark";
+  }
+
+  function renderLinkIndicator(bookmark) {
+    const indicator = document.createElement("span");
+    indicator.className = "ba-row-status";
+    const status = (bookmark.metadata || {}).deadStatus;
+    if (!status || !["dead", "warning"].includes(status.state)) {
+      indicator.setAttribute("aria-hidden", "true");
+      return indicator;
+    }
+    const label = `${status.state === "dead" ? "Broken link" : "Link warning"}: ${status.message || deadStatusLabel(status)}`;
+    indicator.dataset.state = status.state;
+    indicator.setAttribute("role", "img");
+    indicator.setAttribute("aria-label", label);
+    indicator.title = label;
+    const icon = document.createElement("img");
+    icon.src = ICONS.check;
+    icon.alt = "";
+    indicator.append(icon);
+    return indicator;
   }
 
   function renderEmptyState(copy, image) {
@@ -552,7 +582,7 @@
     const meta = bookmark.metadata || {};
     if (meta.notes) wrap.append(pill("notes"));
     if (meta.useCount) wrap.append(pill(`${meta.useCount} opens`));
-    for (const tag of (meta.autoTags || []).slice(0, 3)) wrap.append(pill(tag));
+    for (const tag of (meta.autoTags || []).slice(0, 8)) wrap.append(pill(tag));
     if (meta.deadStatus) wrap.append(pill(deadStatusLabel(meta.deadStatus), meta.deadStatus.state));
     return wrap;
   }
@@ -574,7 +604,7 @@
         </div>
         <label class="ba-muted">Notes auto-save</label>
         <textarea class="ba-textarea" placeholder="Add notes for this bookmark"></textarea>
-        <div class="ba-pills"></div>
+        <div class="ba-detail-metadata"></div>
       </div>
     `;
     els.detail.querySelector(".ba-detail-title").textContent = bookmark.title || bookmark.url;
@@ -582,8 +612,7 @@
     const textarea = els.detail.querySelector(".ba-textarea");
     textarea.value = meta.notes || "";
     textarea.addEventListener("input", () => autosaveNotes(bookmark, textarea.value));
-    const pills = els.detail.querySelector(".ba-pills");
-    for (const tag of (meta.autoTags || []).slice(0, 8)) pills.append(pill(tag));
+    els.detail.querySelector(".ba-detail-metadata").append(renderPills(bookmark));
   }
 
   function visibleBookmarks() {

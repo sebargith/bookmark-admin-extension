@@ -26,6 +26,7 @@ Chrome will create a managed bookmark root named `Bookmark Admin`. Clicking the 
 - Store generated keywords, notes, open counts, and dead-link status in extension local storage.
 - Detect duplicates before saving and update metadata instead of creating another copy.
 - Expand folders into deployable lists that show subfolders and bookmarks inline.
+- Browse consistent compact bookmark rows with wider titles, narrow dates, and full titles/URLs on hover. Only link issues show a list indicator; notes, use counts, and generated keywords remain in the detail panel and search.
 - Right-click folders and bookmarks, or use their `...` buttons, for move, rename, notes, delete, check, sort, and re-index actions.
 - Notes auto-save from the detail compartment.
 - Export the managed tree as JSON or Chrome bookmark HTML.
