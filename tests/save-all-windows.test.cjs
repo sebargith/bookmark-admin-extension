@@ -90,6 +90,15 @@ test("captures each window on the bar after the highest number, preserving tab o
   assert.equal(Object.values(fixture.storage.savedWindows).filter((record) => record.capturedAt).length, 2);
 });
 
+test("capture metadata storage failure does not discard successfully saved bookmarks", async () => {
+  const fixture = setup({ windows: [{ tabs: [tab(0)] }, { tabs: [tab(1)] }] });
+  fixture.context.chrome.storage.local.set = () => { throw new Error("Storage unavailable"); };
+  const result = await fixture.context.saveAllWindows();
+  assert.equal(result.savedTabCount, 2);
+  assert.equal(result.metadataFailedWindowCount, 2);
+  assert.equal(fixture.root.children[0].children.length, 2);
+});
+
 test("starts at nuevo1, accepts spaced names, and continues above gaps and very large numbers", async () => {
   for (const [existing, expected] of [
     [[], "nuevo1"],

@@ -66,3 +66,13 @@ test("popup shows a background error and enables a retry", async () => {
   assert.equal(fixture.button.disabled, false);
   assert.equal(fixture.status.hidden, false);
 });
+
+test("popup distinguishes saved bookmarks from capture metadata storage failure", async () => {
+  const fixture = setup();
+  const pending = fixture.context.saveWindowTabs();
+  fixture.reply({ ok: true, result: { folders: [{ title: "nuevo7" }], savedTabCount: 1, metadataFailedWindowCount: 1 } });
+  await pending;
+  assert.match(fixture.status.textContent, /Saved 1 tab/);
+  assert.match(fixture.status.textContent, /capture details could not be stored/);
+  assert.equal(fixture.button.disabled, false);
+});

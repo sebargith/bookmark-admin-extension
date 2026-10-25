@@ -65,6 +65,24 @@ test("overlapping reopen requests share one window creation and can retry a fail
   assert.equal(createCalls, 2);
 });
 
+test("confirmation snapshots reject changed captures before opening or moving pages", async () => {
+  const fixture = createFixture();
+  await assert.rejects(fixture.context.reopenSavedWindow({ folderId: "110", confirmed: true, expectedUrls: ["https://example.test/outdated"] }), /capture changed/);
+  await assert.rejects(fixture.context.moveSavedItemsToLibrary({ captureId: "110", folderId: "101", expectedIds: ["210"] }), /capture changed/);
+  assert.deepEqual(fixture.windowsCreated, []);
+  assert.deepEqual(fixture.mutations, []);
+});
+
+test("a stale tree snapshot cannot erase a newly registered capture", async () => {
+  const fixture = createFixture();
+  const stale = copy(fixture.root);
+  fixture.find("1").children.push({ id: "fresh", parentId: "1", title: "nuevo11", children: [] });
+  await fixture.context.updateSavedWindowRecords(fixture.root, { fresh: { capturedAt: 12345, originalTabCount: 0 } });
+  const records = await fixture.context.updateSavedWindowRecords(stale);
+  assert.equal(fixture.storage.savedWindows.fresh.capturedAt, 12345);
+  assert.equal(records.fresh, undefined);
+});
+
 test("moving capture contents into Library preserves native IDs, notes and undo", async () => {
   const fixture = createFixture();
   const before = copy(fixture.root);

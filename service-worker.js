@@ -32,7 +32,7 @@ function updateSavedWindowRecords(root, patches = {}) {
       const node = nodeMap.get(id);
       if (!isFolder(node) || node.id === liveRoot.id || node.folderType || !record) continue;
       records[id] = {
-        capturedAt: Number.isFinite(record.capturedAt) && record.capturedAt > 0 ? record.capturedAt : null,
+        capturedAt: Number.isFinite(record.capturedAt) && record.capturedAt > 0 && Number.isFinite(new Date(record.capturedAt).getTime()) ? record.capturedAt : null,
         originalTabCount: Number.isInteger(record.originalTabCount) && record.originalTabCount >= 0 ? record.originalTabCount : null
       };
     }
@@ -1053,6 +1053,9 @@ function reopenSavedWindow(payload = {}) {
     const task = (async () => {
       const { node } = await getSavedWindow(id);
       const { urls, skipped } = savedWindowUrls(node);
+      if (payload.expectedUrls && JSON.stringify(payload.expectedUrls) !== JSON.stringify(urls)) {
+        throw new Error("This capture changed. Cancel and review it before reopening.");
+      }
       if (!urls.length) throw new Error("This saved window has no http or https pages to open.");
       if (urls.length > 100) throw new Error("Open at most 100 pages at once. Split this capture into smaller folders first.");
       const window = await chromeCall(chrome.windows.create.bind(chrome.windows), { url: urls, type: "normal", incognito: false });
@@ -1071,6 +1074,12 @@ async function moveSavedItemsToLibrary(payload = {}) {
     throw new Error("Choose a folder inside Library.");
   }
   const ids = payload.bookmarkId ? [payload.bookmarkId] : (node.children || []).map((child) => child.id);
+  const contents = [];
+  walk(node, (item) => { if (item.id !== node.id) contents.push([item.id, item.parentId, item.url || null]); });
+  if (payload.expectedIds && JSON.stringify(payload.expectedIds) !== JSON.stringify(ids) ||
+      payload.expectedContents && JSON.stringify(payload.expectedContents) !== JSON.stringify(contents)) {
+    throw new Error("This capture changed. Cancel and review it before moving.");
+  }
   if (!ids.length) throw new Error("This saved window is empty.");
   for (const id of ids) {
     const item = context.nodeMap.get(id);
