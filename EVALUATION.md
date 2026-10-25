@@ -1,8 +1,9 @@
 # Bookmark Admin Evaluations
 
-Scope: roadmap phases 1 and 2. Phase 1 introduces Library, Saved Windows, and All
+Scope: roadmap phases 1, 2, and 3. Phase 1 introduces Library, Saved Windows, and All
 Bookmarks over Chrome's native bookmark tree. Phase 2 makes bookmark lists compact
-and readable. Separate read-only evaluators reviewed the changes, reran tests
+and readable. Phase 3 adds on-demand details and reliable note saving.
+Separate read-only evaluators reviewed the changes, reran tests
 with synthetic data, and inspected browser screenshots.
 
 The threshold is an overall score of at least 7/10, calculated as the arithmetic
@@ -105,3 +106,49 @@ This is recorded under roadmap phase 9.
 
 The evidence limits above also apply to phase 2: real Chrome rendering used
 synthetic APIs; loaded-extension and native Chrome API integration remain unverified.
+
+## Phase 3: Details on demand
+
+Implementation commits: `2022d51` (metadata write reliability) and `25b207e`
+(on-demand Notes/Properties panel and responsive drawer).
+
+Changes include a hidden-by-default detail panel, dedicated Notes and Properties
+views, close/Escape behavior, restored list width, responsive drawers, retained
+drafts, visible save errors and retry, and flushing on controlled close and
+navigation. Pending notes also survive bookmark refresh and removal. Background
+metadata work is serialized and merges only its changed fields.
+
+Verification: 26 unit tests and 93 browser assertions pass with synthetic data.
+Coverage includes immediate close, switching bookmarks and views, edits during
+in-flight writes, failure/retry, clearing notes, keyboard/focus behavior,
+responsive drawers, overlay closure, and page-exit delivery. The page-exit event
+test is not a guarantee against abrupt browser termination.
+
+Initial independent score: functionality 6/10, visuals 8/10, usability 6/10;
+overall 6.7/10. The evaluator reproduced a stale URL binding after manual bookmark
+URL changes and keyboard focus escaping behind the drawer. Both required revision.
+
+A further local regression probe reproduced an older manager response replacing
+recently saved notes in the UI. Commit `8404519` adds a notes revision counter
+that rejects and refetches such responses.
+
+Revision 1 (`6425bc5`, including `8404519`) refreshes URL identity and input bindings after flushing drafts against
+their original URL. Covered panels become inert, with drawer focus containment,
+resize-aware mode changes, and focus restoration on close. The complete browser
+suite now passes 154 assertions, including the delayed-read, URL-change and
+keyboard-focus regressions.
+
+| Category | Score |
+| --- | ---: |
+| Functionality | 9/10 |
+| Visuals | 8/10 |
+| Usability | 8/10 |
+| Overall | 8.3/10 |
+
+Outcome: accepted after one revision; no second revision required. The evaluator
+found no remaining actionable step-3 findings, independently reran all 26 unit
+tests and 154 browser assertions without page errors, and inspected eight fresh
+screenshots. Additional probes passed live column-to-drawer-to-column transitions
+and confirmed that Ctrl/Alt/Meta+Tab events were not prevented.
+
+The shared evidence limits above apply.

@@ -41,7 +41,7 @@ Verification includes 23 unit tests and 61 browser assertions with synthetic dat
 long titles, metadata-heavy rows, and an actual window-resize gesture. See
 [EVALUATION.md](EVALUATION.md) for the evidence and remaining limitations.
 
-## 3. Details on demand (implemented; independent evaluation pending)
+## 3. Details on demand (complete)
 
 Open notes and bookmark properties only when requested, with a close control and
 reliable autosave. Let the bookmark list use the available space otherwise.
@@ -56,6 +56,11 @@ merge only their own fields so they cannot replace recently saved notes.
 External URL changes refresh editor bindings after flushing original-URL drafts.
 Drawer mode makes covered panels inert and contains keyboard focus. Stale manager
 reads are fetched again if notes were saved while the request was in flight.
+
+Accepted at 8.3/10 after one independent revision. The evaluator reran 26 unit
+tests and 154 browser assertions, inspected desktop/drawer/error screenshots,
+and checked live column/drawer transitions and browser shortcut preservation.
+See [EVALUATION.md](EVALUATION.md) for findings and verification limits.
 
 ## 4. Folder hierarchy and navigation memory (planned)
 
