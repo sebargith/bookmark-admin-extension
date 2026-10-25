@@ -41,10 +41,18 @@ Verification includes 23 unit tests and 61 browser assertions with synthetic dat
 long titles, metadata-heavy rows, and an actual window-resize gesture. See
 [EVALUATION.md](EVALUATION.md) for the evidence and remaining limitations.
 
-## 3. Details on demand (planned)
+## 3. Details on demand (implemented; independent evaluation pending)
 
 Open notes and bookmark properties only when requested, with a close control and
 reliable autosave. Let the bookmark list use the available space otherwise.
+
+Notes and Properties open from bookmark menus into a closable panel. Large
+windows use a third column only while it is open; narrower or resized windows
+use a drawer. Closing restores list space, and Escape dismisses the menu or
+details before the manager. Pending edits are flushed on panel close, bookmark
+or view changes, and controlled manager close. Failed saves retain the draft and
+offer retry. Worker metadata writes are serialized, and indexing/link checking
+merge only their own fields so they cannot replace recently saved notes.
 
 ## 4. Folder hierarchy and navigation memory (planned)
 

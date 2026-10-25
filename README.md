@@ -28,7 +28,8 @@ Chrome will create a managed bookmark root named `Bookmark Admin`. Clicking the 
 - Expand folders into deployable lists that show subfolders and bookmarks inline.
 - Browse consistent compact bookmark rows with wider titles, narrow dates, and full titles/URLs on hover. Only link issues show a list indicator; notes, use counts, and generated keywords remain in the detail panel and search.
 - Right-click folders and bookmarks, or use their `...` buttons, for move, rename, notes, delete, check, sort, and re-index actions.
-- Notes auto-save from the detail compartment.
+- Notes and Properties open on demand in a closable panel, or a drawer in smaller windows. Closing returns the space to the list.
+- Notes auto-save, flush on navigation or controlled closing, and retain failed drafts for retry. Background indexing and link checking preserve recent note edits.
 - Export the managed tree as JSON or Chrome bookmark HTML.
 - Undo the latest delete, move, rename, or sort action.
 - Refresh when Chrome bookmark changes are made outside the manager.
@@ -67,6 +68,8 @@ This is built for personal/local use. The real bookmarks live in Chrome's bookma
 The extension does not send bookmark data to a third-party service. Page indexing fetches saved pages without credentials and stores only compact keyword metadata locally.
 
 The full manager overlay can run on normal `http` and `https` pages. Chrome does not allow extension content scripts on internal pages such as `chrome://extensions`.
+
+Notes use local extension storage. Closing the panel or manager through its controls waits for pending saves and keeps the editor open if saving fails. A page-exit handler makes a best-effort delivery of remaining drafts on native tab closure; browser crashes or forced shutdown cannot guarantee delivery.
 
 ## Development checks
 

@@ -24,6 +24,8 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
   const baseUrl = pathToFileURL(`${repo}${path.sep}`).href;
   const browser = await chromium.launch({ channel: process.env.BOOKMARK_TEST_CHANNEL || "chrome", headless: true });
   const errors = [];
+  let rejectNotes = false;
+  let holdNotes = null;
   let assertions = 0;
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true, reducedMotion: "reduce" });
@@ -33,7 +35,14 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
         renameNode: "renameNode", bulkMove: "bulkMove", bulkDelete: "bulkDelete", openBookmark: "openBookmark",
         updateMetadata: "updateMetadata", checkLinks: "checkLinks", refreshIndex: "refreshIndex", sortFolder: "sortFolder",
         buildExport: "buildExport", openExportPage: "openExportPage" };
-      try { return { ok: true, result: copy(await fixture.context[commands[type]](payload)) }; }
+      try {
+        if (type === "updateMetadata") {
+          if (rejectNotes) throw new Error("Simulated storage failure");
+          const gate = holdNotes;
+          if (gate) await gate;
+        }
+        return { ok: true, result: copy(await fixture.context[commands[type]](payload)) };
+      }
       catch (error) { return { ok: false, error: error.message }; }
     });
     await context.addInitScript(({ baseUrl }) => {
@@ -41,7 +50,10 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
       Object.assign(globalThis.chrome || (globalThis.chrome = {}), {
         runtime: {
           getURL: (asset) => new URL(asset, baseUrl).href,
-          sendMessage: (message, reply) => globalThis.__bookmarkRequest(message.type, message.payload).then(reply)
+          sendMessage: (message, reply) => {
+            if (message.type === "updateMetadata") globalThis.__noteRequestCount = (globalThis.__noteRequestCount || 0) + 1;
+            return globalThis.__bookmarkRequest(message.type, message.payload).then(reply);
+          }
         },
         storage: { onChanged: {
           addListener: (fn) => storageListeners.push(fn),
@@ -63,6 +75,8 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
       assertions += 1;
     };
     await waitRows(2);
+    assert.equal(await page.locator(".ba-detail").isVisible(), false);
+    const fullListWidth = (await page.locator(".ba-bookmark-list").boundingBox()).width;
     const before = copy(fixture.root);
     assert.equal(await rows.locator(".ba-pill").count(), 0);
     assert.equal(await rows.locator('.ba-row-status[role="img"]').count(), 1);
@@ -78,8 +92,101 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await page.getByRole("button", { name: "Options for Library saved page", exact: true }).click();
     await page.locator(".ba-menu button", { hasText: /^Notes$/ }).click();
     assert.equal(await page.locator(".ba-detail textarea").inputValue(), "Synthetic notes retained outside the compact list");
+    assert.ok((await page.locator(".ba-bookmark-list").boundingBox()).width < fullListWidth - 200);
+    await page.screenshot({ path: path.join(artifacts, "notes-desktop.png"), animations: "disabled" });
+    await page.locator(".ba-detail").getByRole("tab", { name: "Properties", exact: true }).click();
     assert.match(await page.locator(".ba-detail").innerText(), /12 opens/);
     assert.match(await page.locator(".ba-detail").innerText(), /autokeywordforsearch/);
+    assert.match(await page.locator(".ba-detail").innerText(), /https:\/\/example.test\/200/);
+    await page.screenshot({ path: path.join(artifacts, "properties-desktop.png"), animations: "disabled" });
+    await page.getByRole("button", { name: "Close details", exact: true }).click();
+    await page.locator(".ba-detail").waitFor({ state: "hidden" });
+    assert.equal((await page.locator(".ba-bookmark-list").boundingBox()).width, fullListWidth);
+    const openNotes = async (title) => {
+      await page.locator(".ba-bookmark-list").getByRole("button", { name: `Options for ${title}`, exact: true }).click();
+      await page.locator(".ba-menu button", { hasText: /^Notes$/ }).click();
+      await page.locator(".ba-detail textarea").waitFor();
+    };
+    await openNotes("Library saved page");
+    await page.locator(".ba-detail textarea").fill("Saved on immediate panel close");
+    await page.getByRole("button", { name: "Close details", exact: true }).click();
+    await page.locator(".ba-detail").waitFor({ state: "hidden" });
+    assert.equal(fixture.storage.metadataByUrl["https://example.test/200"].notes, "Saved on immediate panel close");
+    await openNotes("Library saved page");
+    await page.locator(".ba-detail textarea").fill("First bookmark draft");
+    await openNotes("Library research page");
+    assert.equal(fixture.storage.metadataByUrl["https://example.test/200"].notes, "First bookmark draft");
+    await page.locator(".ba-detail textarea").fill("Second bookmark draft");
+    await page.getByRole("tab", { name: /^Saved Windows/ }).click();
+    await page.locator(".ba-detail").waitFor({ state: "hidden" });
+    assert.equal(fixture.storage.metadataByUrl["https://example.test/201"].notes, "Second bookmark draft");
+    await view("Library");
+    await waitRows(2);
+    await openNotes("Library saved page");
+    let releaseNotes;
+    holdNotes = new Promise((resolve) => { releaseNotes = resolve; });
+    const sent = await page.evaluate(() => globalThis.__noteRequestCount || 0);
+    await page.locator(".ba-detail textarea").fill("Older request in flight");
+    await page.waitForFunction((count) => globalThis.__noteRequestCount > count, sent);
+    await page.locator(".ba-detail textarea").fill("Latest draft wins");
+    await page.getByRole("button", { name: "Close details", exact: true }).click();
+    assert.equal(await page.locator(".ba-detail").isVisible(), true);
+    holdNotes = null;
+    releaseNotes();
+    await page.locator(".ba-detail").waitFor({ state: "hidden" });
+    assert.equal(fixture.storage.metadataByUrl["https://example.test/200"].notes, "Latest draft wins");
+    await openNotes("Library saved page");
+    rejectNotes = true;
+    await page.locator(".ba-detail textarea").fill("Keep this draft after a failure");
+    await page.getByRole("button", { name: "Close details", exact: true }).click();
+    await page.locator(".ba-note-retry:not([hidden])").waitFor();
+    assert.equal(await page.locator(".ba-detail textarea").inputValue(), "Keep this draft after a failure");
+    assert.match(await page.locator(".ba-note-status").innerText(), /Could not save/);
+    await page.screenshot({ path: path.join(artifacts, "notes-error.png"), animations: "disabled" });
+    rejectNotes = false;
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await page.waitForFunction(() => document.querySelector(".ba-note-status").textContent === "Saved");
+    assert.equal(fixture.storage.metadataByUrl["https://example.test/200"].notes, "Keep this draft after a failure");
+    await page.locator(".ba-detail textarea").fill("Survives bookmark refresh");
+    await page.evaluate(() => globalThis.__bookmarkChange());
+    await page.waitForFunction(() => document.querySelector(".ba-note-status").textContent === "Saved");
+    assert.equal(await page.locator(".ba-detail textarea").inputValue(), "Survives bookmark refresh");
+    await page.locator(".ba-detail textarea").fill("");
+    await page.keyboard.press("Escape");
+    await page.locator(".ba-detail").waitFor({ state: "hidden" });
+    assert.equal(fixture.storage.metadataByUrl["https://example.test/200"].notes, "");
+    assert.equal(await page.locator("#bookmark-admin-overlay").count(), 1);
+    assert.equal(await page.locator(".ba-bookmark-list").getByRole("button", { name: "Options for Library saved page", exact: true }).evaluate((node) => node === document.activeElement), true);
+    assertions += 16;
+    await openNotes("Library saved page");
+    await page.locator(".ba-detail textarea").fill("Latest draft sent on page exit");
+    await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+    await page.waitForFunction(async () => {
+      const response = await globalThis.__bookmarkRequest("getManagerState", {});
+      return response.result.metadataByUrl["https://example.test/200"].notes === "Latest draft sent on page exit";
+    });
+    await page.locator(".ba-detail").getByRole("tab", { name: "Notes", exact: true }).focus();
+    await page.keyboard.press("ArrowRight");
+    await page.waitForFunction(() => document.querySelector('.ba-detail-tab[data-mode="properties"]').getAttribute("aria-selected") === "true");
+    assert.equal(await page.locator(".ba-detail").getByRole("tab", { name: "Properties", exact: true }).evaluate((node) => node === document.activeElement), true);
+    await page.keyboard.press("ArrowLeft");
+    await page.locator(".ba-detail textarea").waitFor();
+    assert.equal(await page.locator(".ba-detail textarea").inputValue(), "Latest draft sent on page exit");
+    await page.getByRole("button", { name: "Close details", exact: true }).click();
+    await page.locator(".ba-detail").waitFor({ state: "hidden" });
+    assertions += 3;
+    fixture.find("101").children.push({ id: "temp-details", parentId: "101", title: "Temporary details bookmark",
+      url: "https://example.test/temp-details", dateAdded: Date.now() });
+    await page.evaluate(() => globalThis.__bookmarkChange());
+    await waitRows(3);
+    await openNotes("Temporary details bookmark");
+    await page.locator(".ba-detail textarea").fill("Pending note when bookmark is removed");
+    fixture.find("101").children = fixture.find("101").children.filter((node) => node.id !== "temp-details");
+    await page.evaluate(() => globalThis.__bookmarkChange());
+    await page.locator(".ba-detail").waitFor({ state: "hidden" });
+    await waitRows(2);
+    assert.equal(fixture.storage.metadataByUrl["https://example.test/temp-details"].notes, "Pending note when bookmark is removed");
+    assertions += 1;
     await page.locator(".ba-search").fill("autokeywordforsearch");
     await waitRows(1);
     await page.locator(".ba-search").fill("");
@@ -207,6 +314,31 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
       });
       assert.deepEqual(layout, { inViewport: true, rowOverlap: false, horizontalOverflow: false, uniformRows: true, assetsLoaded: true });
       assertions += 5;
+      if (viewport.resize || viewport.width === 390) {
+        const priorWidth = (await page.locator(".ba-bookmark-list").boundingBox()).width;
+        const firstRow = page.locator(".ba-bookmark-list .ba-bookmark-row").first();
+        const id = await firstRow.getAttribute("data-bookmark-id");
+        await firstRow.locator(".ba-icon-btn").click();
+        await page.locator(".ba-menu button", { hasText: /^Properties$/ }).click();
+        assert.equal(await page.locator(".ba-detail").isVisible(), true);
+        assert.equal(await page.locator(".ba-detail-scrim").isVisible(), true);
+        const drawerGeometry = await page.locator(".ba-detail").evaluate((node) => {
+          const panel = node.getBoundingClientRect();
+          const win = node.closest(".ba-window").getBoundingClientRect();
+          return { inside: panel.left >= win.left && panel.right <= win.right && panel.top >= win.top && panel.bottom <= win.bottom,
+            overflow: node.scrollWidth > node.clientWidth + 1 };
+        });
+        assert.deepEqual(drawerGeometry, { inside: true, overflow: false });
+        assert.equal((await page.locator(".ba-bookmark-list").boundingBox()).width, priorWidth);
+        await page.screenshot({ path: path.join(artifacts, viewport.resize ? "properties-resized.png" : "properties-390.png"), animations: "disabled" });
+        await page.locator(".ba-detail").getByRole("tab", { name: "Notes", exact: true }).click();
+        await page.locator(".ba-detail textarea").fill(`Drawer note ${viewport.width}`);
+        await page.screenshot({ path: path.join(artifacts, viewport.resize ? "notes-resized.png" : "notes-390.png"), animations: "disabled" });
+        await page.locator(".ba-detail-scrim").click({ position: { x: 2, y: 2 } });
+        await page.locator(".ba-detail").waitFor({ state: "hidden" });
+        assert.equal(fixture.storage.metadataByUrl[fixture.find(id).url].notes, `Drawer note ${viewport.width}`);
+        assertions += 5;
+      }
     }
 
     const overlay = await context.newPage();
@@ -261,15 +393,25 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await exportPage.getByText("Download started.", { exact: true }).waitFor();
     await exportPage.close();
     assertions += 5;
+    await clickClosedControl("tab", "^Library");
+    await clickClosedControl("button", "^Options for Library saved page$");
+    await clickClosedControl("button", "^Notes$");
+    await clickClosedControl("textbox", "^Notes$");
+    await overlay.keyboard.press("Control+A");
+    await overlay.keyboard.type("Overlay draft saved on close");
+    await overlay.screenshot({ path: path.join(artifacts, "overlay-notes.png"), animations: "disabled" });
     await overlay.mouse.click(5, 5);
+    await overlay.locator("#bookmark-admin-overlay").waitFor({ state: "detached" });
     assert.equal(await overlay.locator("#bookmark-admin-overlay").count(), 0);
+    assert.equal(fixture.storage.metadataByUrl["https://example.test/200"].notes, "Overlay draft saved on close");
     assert.equal(await overlay.evaluate(() => globalThis.__bookmarkListenerCount()), 0);
     await overlay.addScriptTag({ path: path.join(repo, "overlay-manager.js") });
     await overlay.waitForFunction(() => getComputedStyle(document.getElementById("bookmark-admin-overlay")).visibility === "visible");
     await overlay.addScriptTag({ path: path.join(repo, "overlay-manager.js") });
+    await overlay.locator("#bookmark-admin-overlay").waitFor({ state: "detached" });
     assert.equal(await overlay.locator("#bookmark-admin-overlay").count(), 0);
     assert.equal(await overlay.evaluate(() => globalThis.__bookmarkListenerCount()), 0);
-    assertions += 6;
+    assertions += 7;
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ assertions, artifacts, errors, note: "Real Chrome rendering; synthetic Chrome API fixture, isolated from personal data." }));
   } finally {

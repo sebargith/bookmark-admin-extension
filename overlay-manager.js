@@ -29,7 +29,12 @@
     sortMode: "newest",
     issueFilter: "all",
     noteTimer: null,
+    noteDrafts: new Map(),
+    noteVersion: 0,
+    noteFlushPromise: null,
     detailBookmark: null,
+    detailMode: "notes",
+    detailRenderKey: null,
     dragging: null,
     loadSequence: 0,
     refreshTimer: null
@@ -37,8 +42,9 @@
 
   const existing = document.getElementById(ROOT_ID);
   if (existing) {
-    existing.dispatchEvent(new Event("bookmark-admin-dismiss"));
-    existing.remove();
+    const dismissal = new Event("bookmark-admin-dismiss", { cancelable: true });
+    existing.dispatchEvent(dismissal);
+    if (!dismissal.defaultPrevented) existing.remove();
     return;
   }
 
@@ -118,12 +124,8 @@
           </div>
           <div class="ba-bookmark-list"></div>
         </section>
-        <aside class="ba-panel ba-detail">
-          <div class="ba-detail-empty">
-            <img class="ba-empty-visual" src="${ILLUSTRATIONS.emptyLibrary}" alt="">
-            <span>Select Notes from a bookmark menu to edit notes here.</span>
-          </div>
-        </aside>
+        <button class="ba-detail-scrim" type="button" aria-label="Dismiss details" tabindex="-1"></button>
+        <aside class="ba-panel ba-detail" aria-label="Bookmark details" hidden></aside>
       </section>
       <footer class="ba-footer">
         <span class="ba-status">Ready.</span>
@@ -159,6 +161,7 @@
     listCount: root.querySelector(".ba-list-count"),
     bookmarkList: root.querySelector(".ba-bookmark-list"),
     detail: root.querySelector(".ba-detail"),
+    detailScrim: root.querySelector(".ba-detail-scrim"),
     status: root.querySelector(".ba-status"),
     menu: root.querySelector(".ba-menu")
   };
@@ -171,9 +174,13 @@
     els.check.disabled = true;
     els.index.disabled = true;
     els.export.disabled = true;
-    host.addEventListener("bookmark-admin-dismiss", disposeOverlay);
+    host.addEventListener("bookmark-admin-dismiss", (event) => {
+      event.preventDefault();
+      closeOverlay().catch(showError);
+    });
+    els.detailScrim.addEventListener("click", () => closeDetails().catch(showError));
     for (const tab of els.tabs) {
-      tab.addEventListener("click", () => selectView(tab.dataset.view));
+      tab.addEventListener("click", () => selectView(tab.dataset.view).catch(showError));
       tab.addEventListener("keydown", (event) => {
         const index = els.tabs.indexOf(tab);
         let next;
@@ -184,14 +191,14 @@
         if (next === undefined) return;
         event.preventDefault();
         els.tabs[next].focus();
-        selectView(els.tabs[next].dataset.view);
+        selectView(els.tabs[next].dataset.view).catch(showError);
       });
     }
-    els.overview.addEventListener("click", () => selectFolder(null));
+    els.overview.addEventListener("click", () => selectFolder(null).catch(showError));
     els.backdrop.addEventListener("pointerdown", () => {
-      if (!IS_STANDALONE) closeOverlay();
+      if (!IS_STANDALONE) closeOverlay().catch(showError);
     });
-    els.close.addEventListener("click", closeOverlay);
+    els.close.addEventListener("click", () => closeOverlay().catch(showError));
     els.win.addEventListener("pointerdown", (event) => event.stopPropagation());
     els.search.addEventListener("input", () => {
       state.search = els.search.value.trim().toLowerCase();
@@ -225,6 +232,7 @@
     document.addEventListener("keydown", onKeyDown, true);
     els.titlebar.addEventListener("pointerdown", beginDrag);
     chrome.storage.onChanged.addListener(onStorageChanged);
+    window.addEventListener("pagehide", onPageHide);
   }
 
   function send(type, payload = {}) {
@@ -250,7 +258,11 @@
     if (sequence !== state.loadSequence || !root.isConnected) return;
     state.data = data;
     if (state.selectedFolderId && !folderInView(state.selectedFolderId)) state.selectedFolderId = null;
-    if (state.detailBookmark && !findFlatBookmark(state.detailBookmark.id)) state.detailBookmark = null;
+    if (state.detailBookmark && !findFlatBookmark(state.detailBookmark.id)) {
+      await flushNotes();
+      if (sequence !== state.loadSequence || !root.isConnected) return;
+      state.detailBookmark = null;
+    }
     render();
     if (status) setStatus(status);
   }
@@ -260,11 +272,12 @@
     renderNavigation();
     renderTree();
     renderBookmarks();
-    if (!state.detailBookmark || !els.detail.contains((shadow || document).activeElement)) renderDetail();
+    renderDetail();
   }
 
-  function selectView(view) {
+  async function selectView(view) {
     if (!state.data || !VIEW_LABELS[view]) return;
+    await flushNotes();
     state.selectedByView[state.view] = state.selectedFolderId;
     state.view = view;
     state.selectedFolderId = state.selectedByView[view];
@@ -361,7 +374,7 @@
       showFolderMenu(event, folder, isRoot);
     });
     row.addEventListener("click", (event) => {
-      if (!event.target.closest("button")) selectFolder(folder.id);
+      if (!event.target.closest("button")) selectFolder(folder.id).catch(showError);
     });
 
     const disclosure = document.createElement("button");
@@ -372,8 +385,7 @@
     disclosure.setAttribute("aria-label", `${expanded ? "Collapse" : "Expand"} ${folder.title}`);
     disclosure.addEventListener("click", (event) => {
       event.stopPropagation();
-      state.selectedFolderId = folder.id;
-      toggleFolder(folder.id);
+      selectFolder(folder.id, false).then(() => toggleFolder(folder.id)).catch(showError);
     });
 
     const folderIcon = document.createElement("img");
@@ -387,7 +399,7 @@
     name.textContent = folderDisplayName(folder, isRoot);
     name.title = state.data.folders.find((node) => node.id === folder.id)?.path || folder.title;
     if (selected) name.setAttribute("aria-current", "true");
-    name.addEventListener("click", () => selectFolder(folder.id));
+    name.addEventListener("click", () => selectFolder(folder.id).catch(showError));
 
     const count = document.createElement("span");
     count.className = "ba-count";
@@ -452,8 +464,10 @@
     return item;
   }
 
-  function selectFolder(folderId, expand = true) {
+  async function selectFolder(folderId, expand = true) {
     if (!state.data) return;
+    await flushNotes();
+    state.detailBookmark = null;
     state.selectedFolderId = folderId;
     if (expand && folderId) state.expanded.add(folderId);
     render();
@@ -486,6 +500,7 @@
   function renderBookmarkRow(bookmark) {
     const row = document.createElement("article");
     row.className = "ba-bookmark-row";
+    row.dataset.bookmarkId = bookmark.id;
     row.draggable = true;
     row.addEventListener("contextmenu", (event) => {
       event.preventDefault();
@@ -588,31 +603,107 @@
   }
 
   function renderDetail() {
+    const open = Boolean(state.detailBookmark);
+    els.detail.hidden = !open;
+    els.layout.classList.toggle("ba-has-detail", open);
     if (!state.detailBookmark) {
       els.detail.textContent = "";
-      els.detail.append(renderEmptyState("Select Notes from a bookmark menu to edit notes here.", ILLUSTRATIONS.emptyLibrary));
+      state.detailRenderKey = null;
       return;
     }
 
     const bookmark = findFlatBookmark(state.detailBookmark.id) || state.detailBookmark;
     const meta = bookmark.metadata || {};
+    const key = `${bookmark.id}:${state.detailMode}`;
+    if (key === state.detailRenderKey && state.detailMode === "notes") {
+      const textarea = els.detail.querySelector("textarea");
+      els.detail.querySelector(".ba-detail-title").textContent = bookmarkTitle(bookmark);
+      if (!state.noteDrafts.has(noteKey(bookmark)) && (shadow || document).activeElement !== textarea) {
+        textarea.value = meta.notes || "";
+      }
+      updateNoteStatus();
+      return;
+    }
+    state.detailRenderKey = key;
     els.detail.innerHTML = `
-      <div class="ba-detail-card">
-        <div>
-          <div class="ba-detail-title"></div>
-          <div class="ba-url"></div>
-        </div>
-        <label class="ba-muted">Notes auto-save</label>
-        <textarea class="ba-textarea" placeholder="Add notes for this bookmark"></textarea>
-        <div class="ba-detail-metadata"></div>
+      <header class="ba-panel-header ba-detail-header">
+        <h2>Bookmark details</h2>
+        <button class="ba-icon-btn ba-detail-close" type="button" aria-label="Close details" title="Close details">x</button>
+      </header>
+      <div class="ba-detail-title" tabindex="-1"></div>
+      <div class="ba-detail-tabs" role="tablist" aria-label="Bookmark detail views">
+        <button type="button" class="ba-detail-tab" role="tab" data-mode="notes" id="ba-detail-notes" aria-controls="ba-detail-content">Notes</button>
+        <button type="button" class="ba-detail-tab" role="tab" data-mode="properties" id="ba-detail-properties" aria-controls="ba-detail-content">Properties</button>
       </div>
+      <div class="ba-detail-content" id="ba-detail-content" role="tabpanel"></div>
     `;
-    els.detail.querySelector(".ba-detail-title").textContent = bookmark.title || bookmark.url;
-    els.detail.querySelector(".ba-url").textContent = bookmark.url;
-    const textarea = els.detail.querySelector(".ba-textarea");
-    textarea.value = meta.notes || "";
-    textarea.addEventListener("input", () => autosaveNotes(bookmark, textarea.value));
-    els.detail.querySelector(".ba-detail-metadata").append(renderPills(bookmark));
+    els.detail.querySelector(".ba-detail-title").textContent = bookmarkTitle(bookmark);
+    els.detail.querySelector(".ba-detail-close").addEventListener("click", () => closeDetails().catch(showError));
+    const tabs = [...els.detail.querySelectorAll(".ba-detail-tab")];
+    for (const [index, tab] of tabs.entries()) {
+      const selected = tab.dataset.mode === state.detailMode;
+      tab.setAttribute("aria-selected", String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      tab.addEventListener("click", () => openDetails(bookmark, tab.dataset.mode, false).then(() => {
+        els.detail.querySelector(`.ba-detail-tab[data-mode="${tab.dataset.mode}"]`).focus();
+      }).catch(showError));
+      tab.addEventListener("keydown", (event) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === "Home" ? 0 : event.key === "End" ? 1 : 1 - index;
+        openDetails(bookmark, tabs[next].dataset.mode, false).then(() => {
+          els.detail.querySelector(`.ba-detail-tab[data-mode="${tabs[next].dataset.mode}"]`).focus();
+        }).catch(showError);
+      });
+    }
+    const content = els.detail.querySelector(".ba-detail-content");
+    content.setAttribute("aria-labelledby", `ba-detail-${state.detailMode}`);
+    content.tabIndex = 0;
+    if (state.detailMode === "notes") {
+      content.innerHTML = `
+        <div class="ba-notes-editor">
+          <label class="ba-muted" for="ba-bookmark-notes">Notes</label>
+          <textarea id="ba-bookmark-notes" class="ba-textarea" placeholder="Add notes"></textarea>
+          <div class="ba-note-feedback"><span class="ba-note-status" role="status" aria-live="polite"></span>
+            <button class="ba-button ba-note-retry" type="button" hidden>Retry</button></div>
+        </div>`;
+      const textarea = content.querySelector("textarea");
+      textarea.value = state.noteDrafts.get(noteKey(bookmark))?.notes ?? meta.notes ?? "";
+      textarea.addEventListener("input", () => queueNotes(bookmark, textarea.value));
+      content.querySelector(".ba-note-retry").addEventListener("click", () => flushNotes().catch(showError));
+      updateNoteStatus();
+    } else {
+      const properties = document.createElement("dl");
+      properties.className = "ba-properties";
+      const lastOpened = Math.max(new Date(meta.lastOpenedAt || 0).getTime() || 0, bookmark.dateLastUsed || 0);
+      const fields = [
+        ["Title", bookmarkTitle(bookmark)], ["URL", bookmark.url], ["Folder", bookmark.folderPath],
+        ["Added", fullDate(bookmark.dateAdded)],
+        ["Last opened", fullDate(lastOpened)],
+        ["Opens in Bookmark Admin", String(meta.useCount || 0)],
+        ["Link status", meta.deadStatus ? meta.deadStatus.message || deadStatusLabel(meta.deadStatus) : "Not checked"]
+      ];
+      for (const [label, value] of fields) {
+        const term = document.createElement("dt");
+        const description = document.createElement("dd");
+        term.textContent = label;
+        description.textContent = value || "-";
+        properties.append(term, description);
+      }
+      content.append(properties, renderPills(bookmark));
+      if (meta.tags?.length) {
+        const tags = document.createElement("div");
+        tags.className = "ba-pills";
+        for (const tag of meta.tags) tags.append(pill(tag));
+        content.append(tags);
+      }
+    }
+  }
+
+  function fullDate(value) {
+    const date = new Date(value);
+    return value && Number.isFinite(date.getTime())
+      ? new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short" }).format(date) : "-";
   }
 
   function visibleBookmarks() {
@@ -710,13 +801,14 @@
     event.stopPropagation();
     const items = [
       { label: "Open", action: () => openBookmark(bookmark.id) },
-      { label: "Notes", action: () => openNotes(bookmark) },
+      { label: "Notes", action: () => openDetails(bookmark, "notes") },
+      { label: "Properties", action: () => openDetails(bookmark, "properties") },
       { separator: true },
       { label: "Refresh page index", action: () => refreshIndex([bookmark.id]) },
       { label: "Check link", action: () => checkIds([bookmark.id]) }
     ];
     if (!state.data.readOnlyNodeIds.includes(bookmark.id)) {
-      items.splice(2, 0,
+      items.splice(3, 0,
         { label: "Move", action: () => moveIds([bookmark.id]) },
         { label: "Rename", action: () => renameNode(bookmark.id, bookmark.title) }
       );
@@ -767,22 +859,89 @@
     await load("Opened bookmark.");
   }
 
-  function openNotes(bookmark) {
-    state.detailBookmark = bookmark;
+  async function openDetails(bookmark, mode, focus = true) {
+    await flushNotes();
+    state.detailBookmark = findFlatBookmark(bookmark.id) || bookmark;
+    state.detailMode = mode;
     renderDetail();
+    if (focus) {
+      const target = els.detail.querySelector(mode === "notes" ? "textarea" : ".ba-detail-title");
+      target.focus();
+    }
   }
 
-  async function autosaveNotes(bookmark, notes) {
+  async function closeDetails() {
+    await flushNotes();
+    const id = state.detailBookmark?.id;
+    state.detailBookmark = null;
+    renderDetail();
+    const target = id && els.bookmarkList.querySelector(`[data-bookmark-id="${CSS.escape(id)}"] .ba-icon-btn`);
+    (target || els.search).focus();
+  }
+
+  function noteKey(bookmark) {
+    return bookmark.normalizedUrl || bookmark.url;
+  }
+
+  function queueNotes(bookmark, notes) {
+    state.noteDrafts.set(noteKey(bookmark), {
+      id: bookmark.id, url: bookmark.url, title: bookmarkTitle(bookmark),
+      notes, version: ++state.noteVersion, error: null
+    });
     clearTimeout(state.noteTimer);
-    state.noteTimer = setTimeout(async () => {
-      await send("updateMetadata", { id: bookmark.id, notes });
-      bookmark.metadata = { ...(bookmark.metadata || {}), notes };
-      if (state.detailBookmark && state.detailBookmark.id === bookmark.id) {
-        state.detailBookmark.metadata = { ...(state.detailBookmark.metadata || {}), notes };
+    state.noteTimer = setTimeout(() => flushNotes().catch(showError), 450);
+    updateNoteStatus();
+  }
+
+  function updateNoteStatus() {
+    const status = els.detail.querySelector(".ba-note-status");
+    if (!status) return;
+    const error = [...state.noteDrafts.values()].find((draft) => draft.error);
+    const pending = state.detailBookmark && state.noteDrafts.has(noteKey(state.detailBookmark));
+    status.textContent = error ? `Could not save notes: ${error.error}` : pending ? "Saving..." : "Saved";
+    status.classList.toggle("ba-note-error", Boolean(error));
+    els.detail.querySelector(".ba-note-retry").hidden = !error;
+  }
+
+  function flushNotes() {
+    clearTimeout(state.noteTimer);
+    if (state.noteFlushPromise) return state.noteFlushPromise;
+    if (!state.noteDrafts.size) return Promise.resolve();
+    state.noteFlushPromise = (async () => {
+      while (state.noteDrafts.size) {
+        const [key, draft] = state.noteDrafts.entries().next().value;
+        draft.error = null;
+        updateNoteStatus();
+        try {
+          await send("updateMetadata", { id: draft.id, url: draft.url, notes: draft.notes });
+        } catch (error) {
+          state.noteDrafts.get(key).error = error.message || String(error);
+          updateNoteStatus();
+          throw error;
+        }
+        // A newer edit must survive an older request finishing.
+        if (state.noteDrafts.get(key)?.version === draft.version) state.noteDrafts.delete(key);
+        for (const bookmark of state.data.bookmarks) {
+          if (noteKey(bookmark) === key) bookmark.metadata = { ...(bookmark.metadata || {}), notes: draft.notes };
+        }
+        if (state.detailBookmark && noteKey(state.detailBookmark) === key) {
+          state.detailBookmark.metadata = { ...(state.detailBookmark.metadata || {}), notes: draft.notes };
+        }
+        state.data.metadataByUrl[key] = { ...(state.data.metadataByUrl[key] || {}), notes: draft.notes };
+        updateNoteStatus();
       }
       setStatus("Notes saved.");
       renderBookmarks();
-    }, 550);
+    })().finally(() => { state.noteFlushPromise = null; });
+    return state.noteFlushPromise;
+  }
+
+  function onPageHide() {
+    clearTimeout(state.noteTimer);
+    // Deliver the latest snapshots directly; the worker serializes their writes.
+    for (const draft of state.noteDrafts.values()) {
+      send("updateMetadata", { url: draft.url, notes: draft.notes }).catch(() => {});
+    }
   }
 
   async function createFolder(parentId) {
@@ -915,10 +1074,16 @@
   }
 
   function onKeyDown(event) {
-    if (event.key === "Escape") closeOverlay();
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!els.menu.classList.contains("ba-hidden")) hideMenu();
+    else if (state.detailBookmark) closeDetails().catch(showError);
+    else closeOverlay().catch(showError);
   }
 
-  function closeOverlay() {
+  async function closeOverlay() {
+    await flushNotes();
     if (IS_STANDALONE) {
       window.close();
       setStatus("Close this tab to leave the manager.");
@@ -931,6 +1096,8 @@
   function disposeOverlay() {
     document.removeEventListener("keydown", onKeyDown, true);
     chrome.storage.onChanged.removeListener(onStorageChanged);
+    window.removeEventListener("pagehide", onPageHide);
+    clearTimeout(state.noteTimer);
     clearTimeout(state.refreshTimer);
     host.remove();
   }
