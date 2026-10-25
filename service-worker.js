@@ -555,6 +555,13 @@ function canModifyNode(node, context) {
   return node && !isProtectedNode(node, context) && !isReadOnlyNode(node, context.nodeMap);
 }
 
+function canRemoveSubtree(node, context) {
+  if (!node) return false;
+  let removable = true;
+  walk(node, (child) => { if (!canModifyNode(child, context)) removable = false; });
+  return removable;
+}
+
 async function getManagerState() {
   const context = await getBookmarkContext();
   const metadataByUrl = await getMetadataMap();
@@ -586,6 +593,84 @@ async function getManagerState() {
     lastUndo: auxiliary[STORAGE_KEYS.UNDO],
     bookmarkRevision: auxiliary[STORAGE_KEYS.REVISION]
   };
+}
+
+async function resolveExport(payload) {
+  if (!["json", "html"].includes(payload.format) || !["library", "windows", "all"].includes(payload.view)) {
+    throw new Error("Invalid export format or view.");
+  }
+  const state = await getManagerState();
+  const nodeMap = buildNodeMap(state.root);
+  const roots = payload.view === "all" ? [state.root] :
+    (payload.view === "library" ? [nodeMap.get(state.managedRoot.id)] : state.savedWindowFolderIds.map((id) => nodeMap.get(id)));
+  let root;
+  if (payload.folderId) {
+    root = nodeMap.get(payload.folderId);
+    if (!isFolder(root) || !roots.some((scope) => isDescendantOrSelf(root.id, scope.id, nodeMap))) {
+      throw new Error("The export folder is no longer in this view.");
+    }
+  } else {
+    root = roots.length === 1 && payload.view !== "windows" ? roots[0] : { title: "Saved Windows", children: roots };
+  }
+  return { state, root };
+}
+
+function escapeBookmarkHtml(value) {
+  return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function exportHtmlNode(node, metadataByUrl, depth = 1) {
+  const indent = "    ".repeat(depth);
+  const added = node.dateAdded ? Math.floor(node.dateAdded / 1000) : "";
+  if (node.url) {
+    const notes = (metadataByUrl[normalizeUrl(node.url)] || {}).notes;
+    return `${indent}<DT><A HREF="${escapeBookmarkHtml(node.url)}" ADD_DATE="${added}">${escapeBookmarkHtml(node.title || node.url)}</A>` +
+      (notes ? `\n${indent}<DD>${escapeBookmarkHtml(notes)}` : "");
+  }
+  return [
+    `${indent}<DT><H3 ADD_DATE="${added}">${escapeBookmarkHtml(node.title || "Folder")}</H3>`,
+    `${indent}<DL><p>`,
+    ...(node.children || []).map((child) => exportHtmlNode(child, metadataByUrl, depth + 1)),
+    `${indent}</DL><p>`
+  ].join("\n");
+}
+
+async function buildExport(payload = {}) {
+  const { state, root } = await resolveExport(payload);
+  if (payload.format === "html") {
+    return { filename: "bookmark-admin-bookmarks.html", type: "text/html", content: [
+      "<!DOCTYPE NETSCAPE-Bookmark-file-1>",
+      '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">',
+      "<TITLE>Bookmarks</TITLE>", "<H1>Bookmarks</H1>", "<DL><p>",
+      exportHtmlNode(root, state.metadataByUrl), "</DL><p>"
+    ].join("\n") };
+  }
+  const ids = new Set();
+  const metadataByUrl = {};
+  walk(root, (node) => {
+    if (node.id) ids.add(node.id);
+    if (node.url) {
+      const key = normalizeUrl(node.url);
+      if (state.metadataByUrl[key]) metadataByUrl[key] = state.metadataByUrl[key];
+    }
+  });
+  const duplicateGroups = state.duplicateGroups.map((group) => ({
+    ...group, bookmarks: group.bookmarks.filter((bookmark) => ids.has(bookmark.id))
+  })).filter((group) => group.bookmarks.length > 1).map((group) => ({ ...group, count: group.bookmarks.length }));
+  return { filename: "bookmark-admin-backup.json", type: "application/json", content: JSON.stringify({
+    app: "Local Bookmark Admin", generatedAt: stamp(), root, metadataByUrl, duplicateGroups
+  }, null, 2) };
+}
+
+async function openExportPage(payload = {}) {
+  await resolveExport(payload);
+  const url = new URL(chrome.runtime.getURL("export.html"));
+  url.searchParams.set("format", payload.format);
+  url.searchParams.set("view", payload.view);
+  if (payload.folderId) url.searchParams.set("folder", payload.folderId);
+  await chromeCall(chrome.tabs.create.bind(chrome.tabs), { url: url.href });
+  return { opened: true };
 }
 
 function findBookmarksByUrl(root, normalizedUrl) {
@@ -892,7 +977,7 @@ async function bulkDelete(payload = {}) {
   const { nodeMap } = context;
   const rawIds = Array.from(new Set(payload.ids || []));
   const ids = filterTopLevelSelection(rawIds, nodeMap)
-    .filter((id) => canModifyNode(nodeMap.get(id), context));
+    .filter((id) => canRemoveSubtree(nodeMap.get(id), context));
 
   if (!ids.length) throw new Error("No removable bookmarks or folders were selected.");
 
@@ -1339,12 +1424,24 @@ async function undoLast() {
   const undo = data[STORAGE_KEYS.UNDO];
   if (!undo) throw new Error("There is no undo action available.");
 
-  const area = await ensureManagedArea();
+  // Restore deleted trees before initialization can create a replacement Library.
+  let area;
+  let restoreFallbackId;
+  if (undo.action === "delete") {
+    const settings = await getSettings();
+    const defaultFolder = await getNode(settings.defaultFolderId);
+    const tree = await chromeCall(chrome.bookmarks.getTree.bind(chrome.bookmarks));
+    const fallback = isFolder(defaultFolder) ? defaultFolder : findWritableRoot(tree[0]);
+    if (!fallback) throw new Error("No writable folder is available for restoration.");
+    restoreFallbackId = fallback.id;
+  } else {
+    area = await ensureManagedArea();
+  }
 
   await withInternalMutation(async () => {
     if (undo.action === "delete") {
       for (const snapshot of undo.snapshots || []) {
-        await restoreDeletedNode(snapshot, area.defaultFolder.id);
+        await restoreDeletedNode(snapshot, restoreFallbackId);
       }
     }
 
@@ -1386,6 +1483,7 @@ async function undoLast() {
     }
   });
 
+  if (undo.action === "delete") await ensureManagedArea();
   await storageRemove(STORAGE_KEYS.UNDO);
   return { undone: undo.label || undo.action };
 }
@@ -1581,6 +1679,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         break;
       case "getManagerState":
         result = await getManagerState();
+        break;
+      case "buildExport":
+        result = await buildExport(payload);
+        break;
+      case "openExportPage":
+        result = await openExportPage(payload);
         break;
       case "getCurrentTab":
         result = await getCurrentTab();

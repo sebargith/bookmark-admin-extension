@@ -38,6 +38,7 @@ function createFixture() {
     : (node.children || []).map((child) => find(id, child)).find(Boolean);
   const storage = { settings: { managedRootId: "100", defaultFolderId: "101", lastSavedFolderId: "102" } };
   const mutations = [];
+  const tabsCreated = [];
   const listeners = {};
   let nextId = 1000;
   const event = (name) => ({
@@ -46,7 +47,7 @@ function createFixture() {
   });
   const done = (callback, result) => callback(copy(result));
   const chrome = {
-    runtime: { onInstalled: event("installed"), onStartup: event("startup"), onMessage: event("message") },
+    runtime: { getURL: (file) => `chrome-extension://fixture/${file}`, onInstalled: event("installed"), onStartup: event("startup"), onMessage: event("message") },
     bookmarks: {
       getTree: (callback) => done(callback, [root]),
       getSubTree: (id, callback) => done(callback, find(id) ? [find(id)] : []),
@@ -90,7 +91,7 @@ function createFixture() {
       remove(key, callback) { delete storage[key]; callback(); }
     } },
     contextMenus: { onClicked: event("contextMenu") }, commands: { onCommand: event("command") },
-    tabs: { create: (details, callback) => done(callback, { id: 1, ...details }) }
+    tabs: { create: (details, callback) => { tabsCreated.push(copy(details)); done(callback, { id: 1, ...details }); } }
   };
   chrome.bookmarks.removeTree = chrome.bookmarks.remove;
   for (const name of ["onCreated", "onChanged", "onMoved", "onRemoved", "onChildrenReordered", "onImportEnded"]) {
@@ -99,7 +100,7 @@ function createFixture() {
   const context = vm.createContext({ chrome, URL, console, setTimeout, clearTimeout,
     fetch: () => { throw new Error("Navigation must not fetch pages"); } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "..", "service-worker.js"), "utf8"), context);
-  return { context, root, find, storage, mutations, chrome, listeners };
+  return { context, root, find, storage, mutations, tabsCreated, chrome, listeners };
 }
 
 module.exports = { createFixture, copy };

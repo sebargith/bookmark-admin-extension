@@ -21,7 +21,8 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
       if (type === "getCurrentTab") return { ok: true, result: { title: "Sample page", url: "https://example.test" } };
       const commands = { getManagerState: "getManagerState", getState: "getManagedState", createFolder: "createFolder",
         renameNode: "renameNode", bulkMove: "bulkMove", bulkDelete: "bulkDelete", openBookmark: "openBookmark",
-        updateMetadata: "updateMetadata", checkLinks: "checkLinks", refreshIndex: "refreshIndex", sortFolder: "sortFolder" };
+        updateMetadata: "updateMetadata", checkLinks: "checkLinks", refreshIndex: "refreshIndex", sortFolder: "sortFolder",
+        buildExport: "buildExport", openExportPage: "openExportPage" };
       try { return { ok: true, result: copy(await fixture.context[commands[type]](payload)) }; }
       catch (error) { return { ok: false, error: error.message }; }
     });
@@ -156,6 +157,19 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     const overlay = await context.newPage();
     overlay.on("pageerror", (error) => errors.push(error.message));
     await overlay.goto(new URL("popup.html", baseUrl).href);
+    await overlay.evaluate(() => {
+      globalThis.__hostDownloadLinks = [];
+      globalThis.__hostBlobUrls = [];
+      new MutationObserver((changes) => changes.forEach((change) => change.addedNodes.forEach((node) => {
+        if (node instanceof HTMLAnchorElement && node.download) globalThis.__hostDownloadLinks.push(node.href);
+      }))).observe(document.documentElement, { childList: true, subtree: true });
+      const original = URL.createObjectURL;
+      URL.createObjectURL = (...args) => {
+        const url = original.apply(URL, args);
+        globalThis.__hostBlobUrls.push(url);
+        return url;
+      };
+    });
     await overlay.evaluate(() => { document.documentElement.dataset.bookmarkAdminMode = "standalone"; });
     await overlay.addStyleTag({ path: path.join(repo, "overlay-manager.css") });
     await overlay.addScriptTag({ path: path.join(repo, "overlay-manager.js") });
@@ -163,6 +177,35 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     assert.equal(await overlay.locator(".ba-view-tab").count(), 0);
     assert.equal(await overlay.evaluate(() => document.getElementById("bookmark-admin-overlay").shadowRoot), null);
     await overlay.screenshot({ path: path.join(artifacts, "overlay-desktop.png"), animations: "disabled" });
+    const cdp = await context.newCDPSession(overlay);
+    const clickClosedControl = async (role, name) => {
+      const tree = await cdp.send("Accessibility.getFullAXTree");
+      const node = tree.nodes.find((item) => item.role?.value === role && new RegExp(name).test(item.name?.value || ""));
+      assert.ok(node, `Missing accessible control: ${name}`);
+      const { model } = await cdp.send("DOM.getBoxModel", { backendNodeId: node.backendDOMNodeId });
+      await overlay.mouse.click((model.content[0] + model.content[4]) / 2, (model.content[1] + model.content[5]) / 2);
+    };
+    await clickClosedControl("tab", "^All Bookmarks");
+    await clickClosedControl("button", "^Export$");
+    await clickClosedControl("button", "^Export JSON$");
+    await overlay.waitForFunction(() => globalThis.__bookmarkListenerCount() === 1);
+    assert.match(fixture.tabsCreated.at(-1).url, /^chrome-extension:\/\/fixture\/export.html\?format=json&view=all$/);
+    assert.deepEqual(await overlay.evaluate(() => globalThis.__hostDownloadLinks), []);
+    assert.deepEqual(await overlay.evaluate(() => globalThis.__hostBlobUrls), []);
+    const exportPage = await context.newPage();
+    const ownedDownloadPromise = exportPage.waitForEvent("download");
+    await exportPage.goto(`${new URL("export.html", baseUrl).href}?format=json&view=all`);
+    const ownedDownload = await ownedDownloadPromise;
+    const privatePath = path.join(artifacts, "private-export.json");
+    await ownedDownload.saveAs(privatePath);
+    const privateData = JSON.parse(fs.readFileSync(privatePath));
+    let exportedCount = 0;
+    const countExported = (node) => { if (node.url) exportedCount += 1; (node.children || []).forEach(countExported); };
+    countExported(privateData.root);
+    assert.equal(exportedCount, 51);
+    await exportPage.getByText("Download started.", { exact: true }).waitFor();
+    await exportPage.close();
+    assertions += 5;
     await overlay.mouse.click(5, 5);
     assert.equal(await overlay.locator("#bookmark-admin-overlay").count(), 0);
     assert.equal(await overlay.evaluate(() => globalThis.__bookmarkListenerCount()), 0);

@@ -824,78 +824,33 @@
     await load(`Indexed ${result.indexed}.`);
   }
 
-  function exportRoot() {
-    if (state.selectedFolderId) return folderById(state.selectedFolderId);
-    if (state.view === "all") return state.data.root;
-    if (state.view === "library") return scopeRoots()[0];
-    return { title: VIEW_LABELS[state.view], children: scopeRoots() };
-  }
-
   function exportJson() {
-    const exportedRoot = exportRoot();
-    const exportedIds = new Set();
-    const metadataByUrl = {};
-    walk(exportedRoot, (node) => {
-      exportedIds.add(node.id);
-      if (node.url) {
-        const key = normalizeUrl(node.url);
-        if (state.data.metadataByUrl[key]) metadataByUrl[key] = state.data.metadataByUrl[key];
-      }
-    });
-    const payload = {
-      app: "Local Bookmark Admin",
-      generatedAt: new Date().toISOString(),
-      root: exportedRoot,
-      metadataByUrl,
-      duplicateGroups: state.data.duplicateGroups.map((group) => ({
-        ...group, bookmarks: group.bookmarks.filter((bookmark) => exportedIds.has(bookmark.id))
-      })).filter((group) => group.bookmarks.length > 1).map((group) => ({ ...group, count: group.bookmarks.length }))
-    };
-    downloadText("bookmark-admin-backup.json", JSON.stringify(payload, null, 2), "application/json");
+    return exportBookmarks("json");
   }
 
   function exportHtml() {
-    const html = [
-      "<!DOCTYPE NETSCAPE-Bookmark-file-1>",
-      '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">',
-      "<TITLE>Bookmarks</TITLE>",
-      "<H1>Bookmarks</H1>",
-      "<DL><p>",
-      renderHtmlNode(exportRoot(), 1),
-      "</DL><p>"
-    ].join("\n");
-    downloadText("bookmark-admin-bookmarks.html", html, "text/html");
+    return exportBookmarks("html");
   }
 
-  function renderHtmlNode(node, depth) {
-    const indent = "    ".repeat(depth);
-    if (node.url) {
-      const addDate = node.dateAdded ? Math.floor(node.dateAdded / 1000) : "";
-      const meta = state.data.metadataByUrl[normalizeUrl(node.url)] || {};
-      const lines = [
-        `${indent}<DT><A HREF="${escapeHtml(node.url)}" ADD_DATE="${addDate}">${escapeHtml(node.title || node.url)}</A>`
-      ];
-      if (meta.notes) lines.push(`${indent}<DD>${escapeHtml(meta.notes)}`);
-      return lines.join("\n");
+  async function exportBookmarks(format) {
+    const payload = { format, view: state.view, folderId: state.selectedFolderId };
+    if (!IS_STANDALONE) {
+      await send("openExportPage", payload);
+      setStatus("Export opened in a separate tab.");
+      return;
     }
-
-    const addDate = node.dateAdded ? Math.floor(node.dateAdded / 1000) : "";
-    const lines = [
-      `${indent}<DT><H3 ADD_DATE="${addDate}">${escapeHtml(node.title || "Folder")}</H3>`,
-      `${indent}<DL><p>`
-    ];
-    for (const child of node.children || []) lines.push(renderHtmlNode(child, depth + 1));
-    lines.push(`${indent}</DL><p>`);
-    return lines.join("\n");
+    const result = await send("buildExport", payload);
+    downloadText(result.filename, result.content, result.type);
   }
 
   function downloadText(filename, content, type) {
+    if (!IS_STANDALONE) throw new Error("Downloads require an extension-owned page.");
     const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
     link.download = filename;
-    document.body.append(link);
+    root.append(link);
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -981,25 +936,6 @@
 
   function findFlatBookmark(id) {
     return state.data.bookmarks.find((bookmark) => bookmark.id === id);
-  }
-
-  function normalizeUrl(url) {
-    try {
-      const parsed = new URL(String(url || "").trim());
-      parsed.hash = "";
-      parsed.hostname = parsed.hostname.toLowerCase();
-      return parsed.toString();
-    } catch {
-      return String(url || "").trim();
-    }
-  }
-
-  function escapeHtml(value) {
-    return String(value || "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
   }
 
   function formatDate(ms) {
