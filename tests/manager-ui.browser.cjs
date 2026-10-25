@@ -33,7 +33,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true, reducedMotion: "reduce" });
     await context.exposeBinding("__bookmarkRequest", async (source, type, payload) => {
       if (type === "getCurrentTab") return { ok: true, result: { title: "Sample page", url: "https://example.test" } };
-      const commands = { getManagerState: "getManagerState", getState: "getManagedState", createFolder: "createFolder",
+      const commands = { getManagerState: "getManagerState", saveManagerNavigation: "saveManagerNavigation", getState: "getManagedState", createFolder: "createFolder",
         renameNode: "renameNode", bulkMove: "bulkMove", bulkDelete: "bulkDelete", openBookmark: "openBookmark",
         updateMetadata: "updateMetadata", checkLinks: "checkLinks", refreshIndex: "refreshIndex", sortFolder: "sortFolder",
         buildExport: "buildExport", openExportPage: "openExportPage" };
@@ -67,6 +67,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
               reply(response);
               if (message.type === "getManagerState") globalThis.__managerReplies = (globalThis.__managerReplies || 0) + 1;
               if (message.type === "updateMetadata") globalThis.__noteReplies = (globalThis.__noteReplies || 0) + 1;
+              if (message.type === "saveManagerNavigation") globalThis.__navigationReplies = (globalThis.__navigationReplies || 0) + 1;
             });
           }
         },
@@ -90,6 +91,104 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
       assertions += 1;
     };
     await waitRows(2);
+    const quickSaveSettings = copy(fixture.storage.settings);
+    const navigate = async (action) => {
+      const replies = await page.evaluate(() => globalThis.__navigationReplies || 0);
+      await action();
+      await page.waitForFunction((before) => (globalThis.__navigationReplies || 0) > before, replies);
+    };
+    await navigate(() => page.locator('[data-folder-id="102"] .ba-name').click());
+    await waitRows(1);
+    assert.equal(await page.locator('.ba-breadcrumbs [aria-current="location"]').innerText(), "Research");
+    await navigate(() => page.locator('[data-folder-id="101"] .ba-disclosure').click());
+    assert.equal(await page.locator(".ba-list-title").innerText(), "Research");
+    assert.equal(await page.locator('[data-folder-id="101"] .ba-disclosure').evaluate((node) => node === document.activeElement), true);
+    await navigate(() => view("Saved Windows"));
+    await navigate(() => page.locator('[data-folder-id="110"] .ba-name').click());
+    const branch = { id: "nav-0", parentId: "111", title: "Archive", children: [] };
+    fixture.find("111").children.push(branch);
+    let leaf = branch;
+    for (let depth = 1; depth <= 8; depth += 1) {
+      const child = { id: `nav-${depth}`, parentId: leaf.id, title: `Deep folder ${depth} with a long descriptive name`, children: [] };
+      leaf.children.push(child);
+      leaf = child;
+    }
+    await page.evaluate(() => globalThis.__bookmarkChange());
+    await page.waitForFunction(() => globalThis.__managerReplies >= 2);
+    await navigate(() => view("All Bookmarks"));
+    await navigate(() => page.getByRole("button", { name: "Expand all folders", exact: true }).click());
+    await page.locator('[data-folder-id="nav-8"]').waitFor();
+    assert.equal(await page.locator('[data-folder-id="nav-8"] .ba-disclosure').isDisabled(), true);
+    await navigate(() => page.locator('[data-folder-id="nav-8"] .ba-name').click());
+    assert.equal(await page.locator(".ba-breadcrumbs button").count(), 12);
+    assert.ok(await page.locator('[data-folder-id="nav-8"] .ba-name').evaluate((node) => node.getBoundingClientRect().width > 70));
+    assert.equal(await page.locator(".ba-layout").evaluate((node) => node.scrollWidth <= node.clientWidth + 1), true);
+    await page.screenshot({ path: path.join(artifacts, "hierarchy-deep.png"), animations: "disabled" });
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('.ba-breadcrumbs [aria-current="location"]')?.textContent.startsWith("Deep folder 8"));
+    assert.equal(await page.getByRole("tab", { name: /^All Bookmarks/ }).getAttribute("aria-selected"), "true");
+    assert.equal(await page.locator('[data-folder-id="nav-0"] .ba-disclosure').getAttribute("aria-expanded"), "true");
+    assert.equal(fixture.storage.managerNavigation.selectedByView.library, "102");
+    assert.equal(fixture.storage.managerNavigation.selectedByView.windows, "110");
+    leaf.title = "Renamed externally, same folder";
+    await page.evaluate(() => globalThis.__bookmarkChange());
+    await page.locator('.ba-breadcrumbs [aria-current="location"]').filter({ hasText: /^Renamed externally/ }).waitFor();
+    assert.equal(fixture.storage.managerNavigation.selectedByView.all, "nav-8");
+    await navigate(() => page.getByRole("button", { name: "Collapse all folders", exact: true }).click());
+    assert.equal(await page.locator(".ba-folder-line").count(), 5);
+    assert.equal(await page.locator(".ba-list-title").innerText(), leaf.title);
+    await navigate(() => page.locator(".ba-breadcrumbs button").filter({ hasText: /^Archive$/ }).click());
+    assert.equal(await page.locator(".ba-list-title").innerText(), "Archive");
+    assert.equal(await page.locator('.ba-breadcrumbs [aria-current="location"]').evaluate((node) => node === document.activeElement), true);
+    fixture.find("111").children = fixture.find("111").children.filter((node) => node.id !== "nav-0");
+    await page.evaluate(() => globalThis.__bookmarkChange());
+    await waitRows(10);
+    assert.equal(await page.locator(".ba-list-title").innerText(), "All Bookmarks");
+    assert.equal(fixture.storage.managerNavigation.expanded.some((id) => id.startsWith("nav-")), false);
+    assert.deepEqual(fixture.storage.settings, quickSaveSettings);
+    await navigate(() => view("Library"));
+    await waitRows(1);
+    assert.equal(await page.locator(".ba-list-title").innerText(), "Research");
+    await navigate(() => page.getByRole("button", { name: /^All in Library/ }).click());
+    await navigate(() => page.getByRole("button", { name: "Collapse all folders", exact: true }).click());
+    await navigate(() => view("Saved Windows"));
+    await navigate(() => page.getByRole("button", { name: /^All saved windows/ }).click());
+    await navigate(() => view("Library"));
+    await waitRows(2);
+    assertions += 21;
+    fixture.storage.managerNavigation = { view: "windows", selectedByView: { library: "200", windows: "130", all: "missing" }, expanded: ["200", "missing", "1"] };
+    await page.reload();
+    await waitRows(3);
+    assert.equal(await page.locator(".ba-list-title").innerText(), "Saved Windows");
+    assert.equal(await page.locator(".ba-overview").getAttribute("aria-pressed"), "true");
+    await navigate(() => view("Library"));
+    await waitRows(2);
+    await navigate(() => page.locator('[data-folder-id="102"] .ba-name').click());
+    assert.equal(await page.locator('[data-folder-id="102"] .ba-name').evaluate((node) => node === document.activeElement), true);
+    const research = fixture.find("102");
+    fixture.find("100").children = fixture.find("100").children.filter((node) => node.id !== "102");
+    fixture.find("111").children.push(research);
+    research.parentId = "111";
+    await page.evaluate(() => globalThis.__bookmarkChange());
+    await page.waitForFunction(() => document.querySelector(".ba-list-title").textContent === "Library");
+    await waitRows(1);
+    assert.equal(fixture.storage.managerNavigation.selectedByView.library, null);
+    await navigate(() => view("All Bookmarks"));
+    await navigate(() => page.getByRole("button", { name: "Expand all folders", exact: true }).click());
+    await navigate(() => page.locator('[data-folder-id="102"] .ba-name').click());
+    assert.match(await page.locator(".ba-breadcrumbs").innerText(), /Reference/);
+    fixture.find("111").children = fixture.find("111").children.filter((node) => node.id !== "102");
+    fixture.find("100").children.push(research);
+    research.parentId = "100";
+    await page.evaluate(() => globalThis.__bookmarkChange());
+    await page.locator(".ba-breadcrumbs button").filter({ hasText: /^Other bookmarks$/ }).waitFor();
+    assert.doesNotMatch(await page.locator(".ba-breadcrumbs").innerText(), /Reference/);
+    assert.equal(fixture.storage.managerNavigation.selectedByView.all, "102");
+    await navigate(() => page.locator(".ba-breadcrumbs button").filter({ hasText: /^All Bookmarks$/ }).click());
+    await navigate(() => view("Library"));
+    await navigate(() => page.getByRole("button", { name: "Collapse all folders", exact: true }).click());
+    await waitRows(2);
+    assertions += 7;
     assert.equal(await page.locator(".ba-detail").isVisible(), false);
     const fullListWidth = (await page.locator(".ba-bookmark-list").boundingBox()).width;
     const before = copy(fixture.root);

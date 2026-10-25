@@ -26,6 +26,8 @@ Chrome will create a managed bookmark root named `Bookmark Admin`. Clicking the 
 - Store generated keywords, notes, open counts, and dead-link status in extension local storage.
 - Detect duplicates before saving and update metadata instead of creating another copy.
 - Expand folders into deployable lists that show subfolders and bookmarks inline.
+- Navigate with clickable folder breadcrumbs, independent disclosure arrows, and expand/collapse-all controls. Empty folders have no active disclosure arrow.
+- Resume the manager's last view and selected folder, with folder locations remembered per view and expanded folders stored locally. This does not change the popup's last save destination.
 - Browse consistent compact bookmark rows with wider titles, narrow dates, and full titles/URLs on hover. Only link issues show a list indicator; notes, use counts, and generated keywords remain in the detail panel and search.
 - Right-click folders and bookmarks, or use their `...` buttons, for move, rename, notes, delete, check, sort, and re-index actions.
 - Notes and Properties open on demand in a closable panel, or a drawer in smaller windows. Closing returns the space to the list.
@@ -54,6 +56,8 @@ The manager has three views:
 - **All Bookmarks** shows the complete native tree, including other, mobile, and managed bookmarks supplied by Chrome. Chrome's special folders and read-only managed nodes are protected.
 
 Navigation counts represent bookmarks. Search and date/status filters apply within the active view and selected folder. Export includes that view or folder, regardless of search filters. Changes made in Chrome update the open manager automatically. These views do not create extra copies or move existing bookmarks. See [ROADMAP.md](ROADMAP.md) for upcoming improvements.
+
+Manager navigation uses native folder IDs, so renaming or moving a folder keeps its identity. Deleted folders or locations moved outside a view fall back to that view's overview. Reopening reveals the selected folder's ancestors; expand/collapse controls do not change the selected location. Navigation is local to this extension installation, with the most recent interaction winning between manager instances. Search, filters, and open details are not restored. Deep tree indentation is capped to keep names readable, and the folder path can scroll horizontally while its view button remains accessible.
 
 Phase-one independent evaluation: 7.3/10 after one revision. See [EVALUATION.md](EVALUATION.md) for findings, verification, and remaining test limits.
 

@@ -24,6 +24,8 @@
     selectedByView: { library: null, windows: null, all: null },
     selectedFolderId: null,
     expanded: new Set(),
+    navigationLoaded: false,
+    navigationWrite: null,
     search: "",
     dateFilter: "all",
     sortMode: "newest",
@@ -117,6 +119,10 @@
             <button class="ba-button ba-new-folder" type="button"><img src="${ICONS.folderOpen}" alt=""><span>New folder</span></button>
           </div>
           <button class="ba-overview" type="button" aria-pressed="true"><span class="ba-overview-label">All in Library</span><span class="ba-overview-count"></span></button>
+          <div class="ba-tree-tools">
+            <button class="ba-icon-btn ba-expand-all" type="button" title="Expand all folders" aria-label="Expand all folders">+</button>
+            <button class="ba-icon-btn ba-collapse-all" type="button" title="Collapse all folders" aria-label="Collapse all folders">&minus;</button>
+          </div>
           <ul class="ba-folder-tree" aria-label="Library folders"></ul>
         </section>
         <section class="ba-panel ba-list-panel">
@@ -124,6 +130,7 @@
             <h2 class="ba-list-title">Bookmarks</h2>
             <span class="ba-list-count ba-muted"></span>
           </div>
+          <nav class="ba-breadcrumbs" aria-label="Folder path"></nav>
           <div class="ba-bookmark-list"></div>
         </section>
         <button class="ba-detail-scrim" type="button" aria-label="Dismiss details" tabindex="-1"></button>
@@ -150,6 +157,9 @@
     overview: root.querySelector(".ba-overview"),
     overviewLabel: root.querySelector(".ba-overview-label"),
     overviewCount: root.querySelector(".ba-overview-count"),
+    expandAll: root.querySelector(".ba-expand-all"),
+    collapseAll: root.querySelector(".ba-collapse-all"),
+    breadcrumbs: root.querySelector(".ba-breadcrumbs"),
     search: root.querySelector(".ba-search"),
     dateFilter: root.querySelector(".ba-date-filter"),
     sort: root.querySelector(".ba-sort"),
@@ -199,6 +209,8 @@
       });
     }
     els.overview.addEventListener("click", () => selectFolder(null).catch(showError));
+    els.expandAll.addEventListener("click", () => setAllExpanded(true));
+    els.collapseAll.addEventListener("click", () => setAllExpanded(false));
     els.backdrop.addEventListener("pointerdown", () => {
       if (!IS_STANDALONE) closeOverlay().catch(showError);
     });
@@ -265,8 +277,24 @@
     const data = await send("getManagerState");
     if (sequence !== state.loadSequence || !root.isConnected) return;
     if (notesRevision !== state.notesRevision) return load(status);
+    const oldPath = state.data ? folderTrail(state.selectedFolderId).map((node) => node.id).join("/") : null;
     state.data = data;
-    if (state.selectedFolderId && !folderInView(state.selectedFolderId)) state.selectedFolderId = null;
+    if (!state.navigationLoaded) {
+      state.view = data.navigation.view;
+      state.selectedByView = { ...data.navigation.selectedByView };
+      state.expanded = new Set(data.navigation.expanded);
+      state.selectedFolderId = state.selectedByView[state.view];
+      state.navigationLoaded = true;
+    }
+    const beforeNavigation = JSON.stringify(navigationSnapshot());
+    for (const view of Object.keys(VIEW_LABELS)) {
+      if (!folderInView(state.selectedByView[view], view)) state.selectedByView[view] = null;
+    }
+    state.selectedFolderId = state.selectedByView[state.view];
+    state.expanded = new Set([...state.expanded].filter((id) => folderById(id) && id !== data.root.id));
+    const revealLocation = oldPath !== folderTrail(state.selectedFolderId).map((node) => node.id).join("/");
+    if (revealLocation) revealFolder(state.selectedFolderId);
+    if (beforeNavigation !== JSON.stringify(navigationSnapshot())) persistNavigation();
     const currentDetail = state.detailBookmark && findFlatBookmark(state.detailBookmark.id);
     const urlChanged = currentDetail && currentDetail.url !== state.detailBookmark.url;
     if (state.detailBookmark && (!currentDetail || urlChanged)) {
@@ -276,6 +304,7 @@
       state.detailRenderKey = null;
     }
     render();
+    if (revealLocation) els.tree.querySelector(".ba-selected")?.scrollIntoView({ block: "nearest" });
     if (status) setStatus(status);
     else if (urlChanged) setStatus("Bookmark URL changed. Details refreshed.");
   }
@@ -284,6 +313,7 @@
     if (!state.data) return;
     renderNavigation();
     renderTree();
+    renderBreadcrumbs();
     renderBookmarks();
     renderDetail();
   }
@@ -297,7 +327,9 @@
     if (state.selectedFolderId && !folderInView(state.selectedFolderId)) state.selectedFolderId = null;
     state.detailBookmark = null;
     hideMenu();
+    revealFolder(state.selectedFolderId);
     render();
+    persistNavigation();
   }
 
   function scopeRoots(view = state.view) {
@@ -314,15 +346,71 @@
     );
   }
 
-  function folderInView(id) {
+  function folderInView(id, view = state.view) {
     const folder = folderById(id);
     if (!folder) return false;
-    if (state.view === "all") return id !== state.data.root.id;
-    return scopeRoots().some((node) => {
+    if (view === "all") return id !== state.data.root.id;
+    return scopeRoots(view).some((node) => {
       let found = false;
       walk(node, (child) => { if (child.id === id && !child.url) found = true; });
       return found;
     });
+  }
+
+  function navigationSnapshot() {
+    return { view: state.view, selectedByView: { ...state.selectedByView }, expanded: [...state.expanded] };
+  }
+
+  function persistNavigation() {
+    if (!state.navigationLoaded) return Promise.resolve();
+    state.navigationWrite = send("saveManagerNavigation", navigationSnapshot());
+    state.navigationWrite.catch(showError);
+    return state.navigationWrite;
+  }
+
+  function folderTrail(id) {
+    const trail = [];
+    let folder = folderById(id);
+    while (folder && folder.id !== state.data.root.id) {
+      trail.unshift(folder);
+      folder = folderById(folder.parentId);
+    }
+    return trail;
+  }
+
+  function revealFolder(id) {
+    for (const folder of folderTrail(id)) {
+      if (folderInView(folder.id)) state.expanded.add(folder.id);
+    }
+  }
+
+  function renderBreadcrumbs() {
+    els.breadcrumbs.textContent = "";
+    const trail = folderTrail(state.selectedFolderId).filter((folder) => folderInView(folder.id) &&
+      !(state.view === "library" && folder.id === state.data.managedRoot.id));
+    const parts = [{ id: null, title: VIEW_LABELS[state.view] }, ...trail.map((folder) => ({ id: folder.id, title: folder.title || "Untitled" }))];
+    for (const [index, part] of parts.entries()) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = part.title;
+      button.title = part.title;
+      if (index === parts.length - 1) button.setAttribute("aria-current", "location");
+      button.addEventListener("click", () => selectFolder(part.id).then(() => {
+        els.breadcrumbs.querySelector('[aria-current="location"]')?.focus();
+      }).catch(showError));
+      els.breadcrumbs.append(button);
+    }
+    els.breadcrumbs.lastElementChild?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  function setAllExpanded(expanded) {
+    for (const scope of scopeRoots()) walk(scope, (node) => {
+      if (node.url) return;
+      if (expanded && node.children?.length) state.expanded.add(node.id);
+      else state.expanded.delete(node.id);
+    });
+    renderTree();
+    persistNavigation();
   }
 
   function newFolderParent() {
@@ -362,26 +450,45 @@
   }
 
   function renderTree() {
+    const active = shadow?.activeElement || document.activeElement;
+    const focusedFolder = els.tree.contains(active) && active.closest(".ba-folder-line")?.dataset.folderId;
+    const focusedControl = active?.matches(".ba-name") ? ".ba-name" :
+      (active?.matches(".ba-disclosure") ? ".ba-disclosure" : ".ba-icon-btn");
+    const scrollTop = els.tree.scrollTop;
     els.tree.textContent = "";
     const nodes = state.view === "library" ? (scopeRoots()[0]?.children || []) : scopeRoots();
     for (const node of nodes) {
       els.tree.append(node.url ? renderTreeBookmark(node) : renderFolderNode(node));
     }
+    let expandable = false;
+    let anyExpanded = false;
+    for (const scope of scopeRoots()) walk(scope, (node) => {
+      if (!node.url && node.children?.length) {
+        expandable = true;
+        if (state.expanded.has(node.id)) anyExpanded = true;
+      }
+    });
+    els.expandAll.disabled = !expandable;
+    els.collapseAll.disabled = !anyExpanded;
     if (!nodes.length) {
       const empty = document.createElement("li");
       empty.className = "ba-tree-empty";
       empty.textContent = state.view === "windows" ? "No saved windows" : "No folders";
       els.tree.append(empty);
     }
+    els.tree.scrollTop = scrollTop;
+    if (focusedFolder) els.tree.querySelector(`[data-folder-id="${CSS.escape(focusedFolder)}"] ${focusedControl}`)?.focus({ preventScroll: true });
   }
 
-  function renderFolderNode(folder, isRoot = false) {
+  function renderFolderNode(folder, isRoot = false, depth = 0) {
     const item = document.createElement("li");
     const expanded = state.expanded.has(folder.id);
     const selected = state.selectedFolderId === folder.id;
 
     const row = document.createElement("div");
     row.className = `ba-folder-line ${selected ? "ba-selected" : ""}`;
+    row.dataset.folderId = folder.id;
+    row.dataset.depth = depth;
     row.addEventListener("contextmenu", (event) => {
       event.preventDefault();
       showFolderMenu(event, folder, isRoot);
@@ -393,12 +500,14 @@
     const disclosure = document.createElement("button");
     disclosure.type = "button";
     disclosure.className = "ba-disclosure";
-    disclosure.textContent = expanded ? "v" : ">";
-    disclosure.setAttribute("aria-expanded", String(expanded));
+    const hasChildren = Boolean(folder.children?.length);
+    disclosure.disabled = !hasChildren;
+    if (hasChildren) disclosure.setAttribute("aria-expanded", String(expanded));
     disclosure.setAttribute("aria-label", `${expanded ? "Collapse" : "Expand"} ${folder.title}`);
     disclosure.addEventListener("click", (event) => {
       event.stopPropagation();
-      selectFolder(folder.id, false).then(() => toggleFolder(folder.id)).catch(showError);
+      toggleFolder(folder.id);
+      els.tree.querySelector(`[data-folder-id="${CSS.escape(folder.id)}"] .ba-disclosure`)?.focus();
     });
 
     const folderIcon = document.createElement("img");
@@ -431,9 +540,10 @@
     if (expanded) {
       const children = document.createElement("ul");
       children.className = "ba-tree-children";
+      children.style.setProperty("--ba-indent", depth < 4 ? "12px" : "0px");
       for (const child of folder.children || []) {
         if (child.url) children.append(renderTreeBookmark(child));
-        else children.append(renderFolderNode(child));
+        else children.append(renderFolderNode(child, false, depth + 1));
       }
       item.append(children);
     }
@@ -482,8 +592,11 @@
     await flushNotes();
     state.detailBookmark = null;
     state.selectedFolderId = folderId;
-    if (expand && folderId) state.expanded.add(folderId);
+    state.selectedByView[state.view] = folderId;
+    if (expand && folderId) revealFolder(folderId);
     render();
+    els.tree.querySelector(".ba-selected")?.scrollIntoView({ block: "nearest" });
+    persistNavigation();
   }
 
   function renderBookmarks() {
@@ -882,7 +995,8 @@
   function toggleFolder(id) {
     if (state.expanded.has(id)) state.expanded.delete(id);
     else state.expanded.add(id);
-    render();
+    renderTree();
+    persistNavigation();
   }
 
   async function openBookmark(id) {
@@ -985,8 +1099,10 @@
       parentId
     });
     state.selectedFolderId = result.folder.id;
+    state.selectedByView[state.view] = result.folder.id;
     state.expanded.add(result.folder.parentId);
     await load(result.existed ? "Folder already exists." : "Folder created.");
+    persistNavigation();
   }
 
   async function renameNode(id, currentTitle) {
@@ -1127,6 +1243,7 @@
 
   async function closeOverlay() {
     await flushNotes();
+    if (state.navigationWrite) await state.navigationWrite.catch(() => persistNavigation());
     if (IS_STANDALONE) {
       window.close();
       setStatus("Close this tab to leave the manager.");
