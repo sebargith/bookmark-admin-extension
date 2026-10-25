@@ -386,6 +386,8 @@
 
   function renderBreadcrumbs() {
     els.breadcrumbs.textContent = "";
+    const scrollTrail = document.createElement("div");
+    scrollTrail.className = "ba-breadcrumb-trail";
     const trail = folderTrail(state.selectedFolderId).filter((folder) => folderInView(folder.id) &&
       !(state.view === "library" && folder.id === state.data.managedRoot.id));
     const parts = [{ id: null, title: VIEW_LABELS[state.view] }, ...trail.map((folder) => ({ id: folder.id, title: folder.title || "Untitled" }))];
@@ -398,9 +400,11 @@
       button.addEventListener("click", () => selectFolder(part.id).then(() => {
         els.breadcrumbs.querySelector('[aria-current="location"]')?.focus();
       }).catch(showError));
-      els.breadcrumbs.append(button);
+      if (index === 0) els.breadcrumbs.append(button);
+      else scrollTrail.append(button);
     }
-    els.breadcrumbs.lastElementChild?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (scrollTrail.childElementCount) els.breadcrumbs.append(scrollTrail);
+    scrollTrail.lastElementChild?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
 
   function setAllExpanded(expanded) {

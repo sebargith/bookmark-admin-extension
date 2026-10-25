@@ -353,10 +353,20 @@
   align-items: center;
   min-width: 0;
   gap: 4px;
-  overflow-x: auto;
-  padding: 7px 10px;
+  overflow: hidden;
+  padding: 0 10px;
   border-bottom: 1px solid #293443;
   background: #141d28;
+}
+
+.ba-breadcrumb-trail {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 7px 0;
   scrollbar-width: thin;
 }
 
@@ -376,7 +386,7 @@
   cursor: pointer;
 }
 
-.ba-breadcrumbs button + button::before {
+.ba-breadcrumb-trail button::before {
   content: "/";
   padding-right: 10px;
   color: #75869b;
@@ -392,12 +402,9 @@
   font-weight: 700;
 }
 
-.ba-breadcrumbs button:first-child {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  background: #141d28;
-  box-shadow: 6px 0 6px #141d28;
+.ba-breadcrumbs > button {
+  max-width: 140px;
+  margin: 7px 0;
 }
 
 .ba-input,

@@ -121,6 +121,10 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     assert.equal(await page.locator('[data-folder-id="nav-8"] .ba-disclosure').isDisabled(), true);
     await navigate(() => page.locator('[data-folder-id="nav-8"] .ba-name').click());
     assert.equal(await page.locator(".ba-breadcrumbs button").count(), 12);
+    const crumbBounds = await page.locator(".ba-breadcrumbs > button").boundingBox();
+    const trailBounds = await page.locator(".ba-breadcrumb-trail").boundingBox();
+    assert.ok(crumbBounds.x + crumbBounds.width <= trailBounds.x);
+    assert.ok(await page.locator(".ba-breadcrumb-trail").evaluate((node) => node.scrollWidth > node.clientWidth && node.scrollLeft > 0));
     assert.ok(await page.locator('[data-folder-id="nav-8"] .ba-name').evaluate((node) => node.getBoundingClientRect().width > 70));
     assert.equal(await page.locator(".ba-layout").evaluate((node) => node.scrollWidth <= node.clientWidth + 1), true);
     await page.screenshot({ path: path.join(artifacts, "hierarchy-deep.png"), animations: "disabled" });
@@ -155,7 +159,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await navigate(() => page.getByRole("button", { name: /^All saved windows/ }).click());
     await navigate(() => view("Library"));
     await waitRows(2);
-    assertions += 21;
+    assertions += 23;
     fixture.storage.managerNavigation = { view: "windows", selectedByView: { library: "200", windows: "130", all: "missing" }, expanded: ["200", "missing", "1"] };
     await page.reload();
     await waitRows(3);
