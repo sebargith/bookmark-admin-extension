@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   UNDO: "lastUndo",
   CHANGE_FEED: "changeFeed",
   REVISION: "bookmarkRevision",
+  NAVIGATION: "managerNavigation",
   PENDING_POPUP_MODE: "pendingPopupMode"
 };
 
@@ -14,6 +15,24 @@ let suppressEventsUntil = 0;
 let saveAllWindowsPromise = null;
 let bookmarkRefreshTimer = null;
 let metadataWriteQueue = Promise.resolve();
+let navigationWriteQueue = Promise.resolve();
+
+function normalizeManagerNavigation(value) {
+  const views = ["library", "windows", "all"];
+  const id = (value) => typeof value === "string" && value.length > 0 && value.length <= 128 ? value : null;
+  return {
+    view: views.includes(value?.view) ? value.view : "library",
+    selectedByView: Object.fromEntries(views.map((view) => [view, id(value?.selectedByView?.[view])])),
+    expanded: [...new Set((Array.isArray(value?.expanded) ? value.expanded : []).map(id).filter(Boolean))].slice(0, 5000)
+  };
+}
+
+function saveManagerNavigation(payload) {
+  const navigation = normalizeManagerNavigation(payload);
+  const write = navigationWriteQueue.then(() => storageSet({ [STORAGE_KEYS.NAVIGATION]: navigation }));
+  navigationWriteQueue = write.catch(() => {});
+  return write.then(() => navigation);
+}
 
 const STOP_WORDS = new Set([
   "about", "after", "again", "against", "also", "because", "before", "being",
@@ -584,6 +603,7 @@ async function getManagerState() {
   const metadataByUrl = await getMetadataMap();
   const auxiliary = await storageGet({
     [STORAGE_KEYS.UNDO]: null,
+    [STORAGE_KEYS.NAVIGATION]: null,
     [STORAGE_KEYS.REVISION]: 0
   });
   const savedWindowFolderIds = [];
@@ -600,6 +620,7 @@ async function getManagerState() {
     managedRoot: context.area.managedRoot,
     defaultFolder: context.area.defaultFolder,
     settings: context.area.settings,
+    navigation: normalizeManagerNavigation(auxiliary[STORAGE_KEYS.NAVIGATION]),
     metadataByUrl,
     ...flattenManagedData(context.root, metadataByUrl),
     savedWindowFolderIds,
@@ -1698,6 +1719,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         break;
       case "getManagerState":
         result = await getManagerState();
+        break;
+      case "saveManagerNavigation":
+        result = await saveManagerNavigation(payload);
         break;
       case "buildExport":
         result = await buildExport(payload);
