@@ -176,3 +176,24 @@ h1 {
   color: var(--blue);
   font-weight: 750;
 }
+
+.windows-button {
+  border-color: rgba(139, 92, 246, 0.45);
+  background: rgba(139, 92, 246, 0.16);
+  color: #ddd6fe;
+  font-weight: 750;
+}
+
+.windows-button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+  transform: none;
+}
+
+.window-save-status {
+  max-height: 100px;
+  overflow-y: auto;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

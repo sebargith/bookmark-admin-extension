@@ -7,6 +7,7 @@ Local Bookmark Admin is designed to keep bookmark data local to Chrome.
 - Chrome bookmarks are stored in Chrome's native bookmark system.
 - Notes, generated search keywords, link-check status, open counts, and undo metadata are stored in `chrome.storage.local`.
 - Generated search keywords are compact metadata, not full saved page copies.
+- `Save all windows` copies tab titles and URLs into native bookmarks, one numbered bookmarks-bar folder per window. It excludes incognito windows and does not fetch page content or store a separate tab history.
 
 ## Network Access
 

@@ -17,6 +17,8 @@ function cacheElements() {
     "saveToFolder",
     "saveToAll",
     "createFolderMini",
+    "saveAllWindows",
+    "windowSaveStatus",
     "openManager"
   ]) {
     els[id] = document.getElementById(id);
@@ -27,6 +29,7 @@ function bindEvents() {
   els.saveToFolder.addEventListener("click", () => saveCurrentPage(els.saveFolder.value));
   els.saveToAll.addEventListener("click", () => saveCurrentPage(appState.defaultFolder.id));
   els.createFolderMini.addEventListener("click", () => createFolder().catch(showError));
+  els.saveAllWindows.addEventListener("click", saveWindowTabs);
   els.openManager.addEventListener("click", () => openManagerOverlay().catch(showError));
 }
 
@@ -105,6 +108,32 @@ async function createFolder() {
   });
   await refresh();
   els.saveFolder.value = result.folder.id;
+}
+
+async function saveWindowTabs() {
+  if (els.saveAllWindows.disabled) return;
+  const label = els.saveAllWindows.querySelector("span");
+  els.saveAllWindows.disabled = true;
+  label.textContent = "Saving windows...";
+  els.windowSaveStatus.hidden = true;
+
+  try {
+    const result = await send("saveAllWindows");
+    const folderCount = result.folders.length;
+    const parts = [folderCount
+      ? `Saved ${result.savedTabCount} ${result.savedTabCount === 1 ? "tab" : "tabs"} in ${folderCount} ${folderCount === 1 ? "folder" : "folders"}: ${result.folders.map((folder) => folder.title).join(", ")}.`
+      : "No tabs were saved."];
+    if (result.skippedTabCount) parts.push(`${result.skippedTabCount} unsupported ${result.skippedTabCount === 1 ? "tab" : "tabs"} skipped.`);
+    if (result.failedTabCount) parts.push(`${result.failedTabCount} ${result.failedTabCount === 1 ? "tab" : "tabs"} could not be saved.`);
+    if (result.failedWindowCount) parts.push(`${result.failedWindowCount} window ${result.failedWindowCount === 1 ? "folder" : "folders"} could not be created.`);
+    els.windowSaveStatus.textContent = parts.join(" ");
+  } catch (error) {
+    els.windowSaveStatus.textContent = error.message || "Could not save the open windows.";
+  } finally {
+    els.windowSaveStatus.hidden = false;
+    els.saveAllWindows.disabled = false;
+    label.textContent = "Save all windows";
+  }
 }
 
 async function openManagerOverlay() {

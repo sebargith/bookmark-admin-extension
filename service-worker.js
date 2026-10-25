@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
 };
 
 let suppressEventsUntil = 0;
+let saveAllWindowsPromise = null;
 
 const STOP_WORDS = new Set([
   "about", "after", "again", "against", "also", "because", "before", "being",
@@ -664,6 +665,114 @@ async function quickSaveCurrentPage(payload = {}) {
     title: payload.title || tab.title,
     url: payload.url || tab.url
   });
+}
+
+function nextWindowFolderNumber(children) {
+  let highest = 0n;
+  for (const node of children || []) {
+    if (!isFolder(node)) continue;
+    const match = safeTitle(node.title).match(/^nuevo\s*(\d+)$/i);
+    if (match) {
+      const number = BigInt(match[1]);
+      if (number > highest) highest = number;
+    }
+  }
+  return highest + 1n;
+}
+
+function findBookmarksBar(root) {
+  const children = root && root.children || [];
+  const bars = children.filter((node) =>
+    isFolder(node) && !node.unmodifiable && node.folderType === "bookmarks-bar"
+  );
+  // If Chrome exposes both account and local bars, continue the existing series.
+  bars.sort((a, b) => {
+    const aNext = nextWindowFolderNumber(a.children);
+    const bNext = nextWindowFolderNumber(b.children);
+    if (aNext !== bNext) return aNext > bNext ? -1 : 1;
+    return Number(Boolean(b.syncing)) - Number(Boolean(a.syncing));
+  });
+  // Before Chrome 134, the standard bookmarks bar has ID 1 and no folderType.
+  return bars[0] || children.find((node) =>
+    node.id === "1" && isFolder(node) && !node.unmodifiable && !node.folderType
+  );
+}
+
+function windowTabUrl(tab) {
+  const url = String(tab.pendingUrl || tab.url || "").trim();
+  try {
+    const protocol = new URL(url).protocol;
+    return ["http:", "https:", "chrome:", "chrome-extension:", "file:", "ftp:", "about:"]
+      .includes(protocol) ? url : "";
+  } catch {
+    return "";
+  }
+}
+
+function saveAllWindows() {
+  // Share an active capture so overlapping popup requests cannot create two sets.
+  if (!saveAllWindowsPromise) {
+    saveAllWindowsPromise = captureAllWindows().finally(() => {
+      saveAllWindowsPromise = null;
+    });
+  }
+  return saveAllWindowsPromise;
+}
+
+async function captureAllWindows() {
+  const windows = await chromeCall(chrome.windows.getAll.bind(chrome.windows), {
+    populate: true,
+    windowTypes: ["normal", "popup"]
+  });
+  const tree = await chromeCall(chrome.bookmarks.getTree.bind(chrome.bookmarks));
+  const bar = findBookmarksBar(tree[0]);
+  if (!bar) throw new Error("Chrome's bookmarks bar is unavailable or read-only.");
+
+  const result = {
+    folders: [],
+    savedTabCount: 0,
+    skippedTabCount: 0,
+    failedTabCount: 0,
+    failedWindowCount: 0
+  };
+
+  for (const browserWindow of windows) {
+    if (browserWindow.incognito) continue;
+    const tabs = (browserWindow.tabs || []).slice().sort((a, b) => a.index - b.index);
+    const saveableTabs = tabs.map((tab) => ({ tab, url: windowTabUrl(tab) }))
+      .filter((entry) => entry.url);
+    result.skippedTabCount += tabs.length - saveableTabs.length;
+    if (!saveableTabs.length) continue;
+
+    let folder;
+    try {
+      // Re-read for every window to include folders added manually during capture.
+      const children = await chromeCall(chrome.bookmarks.getChildren.bind(chrome.bookmarks), bar.id);
+      folder = await chromeCall(chrome.bookmarks.create.bind(chrome.bookmarks), {
+        parentId: bar.id,
+        title: `nuevo${nextWindowFolderNumber(children)}`
+      });
+    } catch {
+      result.failedWindowCount += 1;
+      continue;
+    }
+    result.folders.push({ id: folder.id, title: folder.title });
+
+    for (const { tab, url } of saveableTabs) {
+      try {
+        await chromeCall(chrome.bookmarks.create.bind(chrome.bookmarks), {
+          parentId: folder.id,
+          title: safeTitle(tab.title) || url,
+          url
+        });
+        result.savedTabCount += 1;
+      } catch {
+        result.failedTabCount += 1;
+      }
+    }
+  }
+
+  return result;
 }
 
 async function createFolder(payload = {}) {
@@ -1418,6 +1527,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         break;
       case "quickSaveCurrentPage":
         result = await quickSaveCurrentPage(payload);
+        break;
+      case "saveAllWindows":
+        result = await saveAllWindows();
         break;
       case "saveBookmark":
         result = await saveBookmark(payload);

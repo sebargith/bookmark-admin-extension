@@ -16,6 +16,7 @@ Chrome will create a managed bookmark root named `Bookmark Admin`. Clicking the 
 
 - Save the current page from the compact toolbar popup, page context menu, or `Alt+Shift+B`.
 - Choose the target folder before saving, with a compact `New` folder action.
+- Save all open Chrome windows into separate numbered folders on the bookmarks bar with `Save all windows`.
 - Open the movable full manager overlay from the compact popup, page context menu, or `Alt+Shift+M`.
 - Blur the page behind the manager overlay and close it by clicking outside or pressing `Esc`.
 - Create folders and move bookmarks or folders by drag and drop.
@@ -38,10 +39,12 @@ The extension asks for:
 - `contextMenus`: add quick-save and open-manager menu items.
 - `scripting`: inject the movable full manager overlay into the active page.
 - `storage`: store tags, notes, usage stats, undo state, and change notices.
-- `tabs`: read the active tab when saving the current page.
+- `tabs`: read tab titles and URLs when saving the current page or all open windows.
 - `http://*/*` and `https://*/*`: index saved pages and check bookmark URLs for dead-link status.
 
 ## Notes
+
+`Save all windows` creates one folder per non-incognito window directly on the bookmarks bar, named `nuevo1`, `nuevo2`, and so on. It continues after the highest existing numbered folder on that bar (including names such as `nuevo 6`), preserves tab order and repeated URLs, and leaves the windows open. If Chrome exposes both account and local bookmarks bars, it uses the bar with the highest existing `nuevo` number, preferring the account bar when tied. These folders are separate from the manager's `Bookmark Admin` library. The action makes no page-indexing requests. Unsupported or unavailable tab URLs are skipped and failures are reported in the popup. Closing the popup does not cancel a capture already started in the background.
 
 This is built for personal/local use. The real bookmarks live in Chrome's bookmark system under the `Bookmark Admin` folder, so normal Chrome bookmark sync can sync those bookmark folders and URLs. Extra metadata such as notes, generated search keywords, dead-link status, and open counts is stored locally by the extension.
 
