@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
   CHANGE_FEED: "changeFeed",
   REVISION: "bookmarkRevision",
   NAVIGATION: "managerNavigation",
+  SAVED_WINDOWS: "savedWindows",
   PENDING_POPUP_MODE: "pendingPopupMode"
 };
 
@@ -16,6 +17,53 @@ let saveAllWindowsPromise = null;
 let bookmarkRefreshTimer = null;
 let metadataWriteQueue = Promise.resolve();
 let navigationWriteQueue = Promise.resolve();
+let savedWindowWriteQueue = Promise.resolve();
+const reopeningWindows = new Map();
+
+function updateSavedWindowRecords(root, patches = {}) {
+  const task = savedWindowWriteQueue.then(async () => {
+    const stored = await storageGet({ [STORAGE_KEYS.SAVED_WINDOWS]: {} });
+    const previous = stored[STORAGE_KEYS.SAVED_WINDOWS] || {};
+    const tree = await chromeCall(chrome.bookmarks.getTree.bind(chrome.bookmarks));
+    const liveRoot = tree[0];
+    const nodeMap = buildNodeMap(liveRoot);
+    const records = {};
+    for (const [id, record] of Object.entries({ ...previous, ...patches })) {
+      const node = nodeMap.get(id);
+      if (!isFolder(node) || node.id === liveRoot.id || node.folderType || !record) continue;
+      records[id] = {
+        capturedAt: Number.isFinite(record.capturedAt) && record.capturedAt > 0 ? record.capturedAt : null,
+        originalTabCount: Number.isInteger(record.originalTabCount) && record.originalTabCount >= 0 ? record.originalTabCount : null
+      };
+    }
+    for (const bar of liveRoot.children || []) {
+      if (bar.folderType !== "bookmarks-bar" && !(bar.id === "1" && !bar.folderType)) continue;
+      for (const node of bar.children || []) {
+        if (isFolder(node) && /^nuevo\s*\d+$/i.test(safeTitle(node.title)) && !records[node.id]) {
+          records[node.id] = { capturedAt: null, originalTabCount: null };
+        }
+      }
+    }
+    if (JSON.stringify(previous) !== JSON.stringify(records)) await storageSet({ [STORAGE_KEYS.SAVED_WINDOWS]: records });
+    const snapshotIds = buildNodeMap(root);
+    return Object.fromEntries(Object.entries(records).filter(([id]) => isFolder(snapshotIds.get(id))));
+  });
+  savedWindowWriteQueue = task.catch(() => {});
+  return task;
+}
+
+function savedWindowUrls(folder) {
+  const urls = [];
+  let skipped = 0;
+  walk(folder, (node) => {
+    if (!node.url) return;
+    try {
+      if (!["http:", "https:"].includes(new URL(node.url).protocol)) throw new Error("Unsupported URL");
+      urls.push(node.url);
+    } catch { skipped += 1; }
+  });
+  return { urls, skipped };
+}
 
 function normalizeManagerNavigation(value) {
   const views = ["library", "windows", "all"];
@@ -606,15 +654,23 @@ async function getManagerState() {
     [STORAGE_KEYS.NAVIGATION]: null,
     [STORAGE_KEYS.REVISION]: 0
   });
-  const savedWindowFolderIds = [];
-  for (const bar of context.root.children || []) {
-    if (bar.folderType !== "bookmarks-bar" && !(bar.id === "1" && !bar.folderType)) continue;
-    for (const node of bar.children || []) {
-      if (isFolder(node) && /^nuevo\s*\d+$/i.test(safeTitle(node.title))) {
-        savedWindowFolderIds.push(node.id);
-      }
+  const captureRecords = await updateSavedWindowRecords(context.root);
+  const captureIds = new Set(Object.keys(captureRecords));
+  const savedWindows = Object.entries(captureRecords).map(([folderId, record]) => {
+    const folder = context.nodeMap.get(folderId);
+    const { urls, skipped } = savedWindowUrls(folder);
+    return { folderId, ...record, dateAdded: folder.dateAdded || null,
+      tabCount: urls.length + skipped, reopenableTabCount: urls.length, skippedTabCount: skipped };
+  });
+  // Nested captures remain identifiable without duplicating their trees in the overview/export.
+  const savedWindowFolderIds = [...captureIds].filter((id) => {
+    let parent = context.nodeMap.get(id)?.parentId;
+    while (parent) {
+      if (captureIds.has(parent)) return false;
+      parent = context.nodeMap.get(parent)?.parentId;
     }
-  }
+    return true;
+  });
   return {
     root: context.root,
     managedRoot: context.area.managedRoot,
@@ -624,6 +680,7 @@ async function getManagerState() {
     metadataByUrl,
     ...flattenManagedData(context.root, metadataByUrl),
     savedWindowFolderIds,
+    savedWindows,
     protectedNodeIds: [...context.nodeMap.values()]
       .filter((node) => isProtectedNode(node, context)).map((node) => node.id),
     readOnlyNodeIds: [...context.nodeMap.values()]
@@ -697,7 +754,8 @@ async function buildExport(payload = {}) {
     ...group, bookmarks: group.bookmarks.filter((bookmark) => ids.has(bookmark.id))
   })).filter((group) => group.bookmarks.length > 1).map((group) => ({ ...group, count: group.bookmarks.length }));
   return { filename: "bookmark-admin-backup.json", type: "application/json", content: JSON.stringify({
-    app: "Local Bookmark Admin", generatedAt: stamp(), root, metadataByUrl, duplicateGroups
+    app: "Local Bookmark Admin", generatedAt: stamp(), root, metadataByUrl, duplicateGroups,
+    savedWindows: state.savedWindows.filter((capture) => ids.has(capture.folderId))
   }, null, 2) };
 }
 
@@ -928,7 +986,8 @@ async function captureAllWindows() {
     savedTabCount: 0,
     skippedTabCount: 0,
     failedTabCount: 0,
-    failedWindowCount: 0
+    failedWindowCount: 0,
+    metadataFailedWindowCount: 0
   };
 
   for (const browserWindow of windows) {
@@ -952,6 +1011,8 @@ async function captureAllWindows() {
       continue;
     }
     result.folders.push({ id: folder.id, title: folder.title });
+    const capturedAt = Date.now();
+    let capturedTabCount = 0;
 
     for (const { tab, url } of saveableTabs) {
       try {
@@ -961,13 +1022,64 @@ async function captureAllWindows() {
           url
         });
         result.savedTabCount += 1;
+        capturedTabCount += 1;
       } catch {
         result.failedTabCount += 1;
       }
     }
+    try {
+      const currentTree = await chromeCall(chrome.bookmarks.getTree.bind(chrome.bookmarks));
+      await updateSavedWindowRecords(currentTree[0], { [folder.id]: { capturedAt, originalTabCount: capturedTabCount } });
+    } catch {
+      result.metadataFailedWindowCount += 1;
+    }
   }
 
   return result;
+}
+
+async function getSavedWindow(folderId) {
+  const state = await getManagerState();
+  const capture = state.savedWindows.find((item) => item.folderId === folderId);
+  const node = buildNodeMap(state.root).get(folderId);
+  if (!capture || !isFolder(node)) throw new Error("Saved window not found. Refresh the manager.");
+  return { state, capture, node };
+}
+
+function reopenSavedWindow(payload = {}) {
+  if (payload.confirmed !== true) return Promise.reject(new Error("Confirm before reopening a saved window."));
+  const id = payload.folderId;
+  if (!reopeningWindows.has(id)) {
+    const task = (async () => {
+      const { node } = await getSavedWindow(id);
+      const { urls, skipped } = savedWindowUrls(node);
+      if (!urls.length) throw new Error("This saved window has no http or https pages to open.");
+      if (urls.length > 100) throw new Error("Open at most 100 pages at once. Split this capture into smaller folders first.");
+      const window = await chromeCall(chrome.windows.create.bind(chrome.windows), { url: urls, type: "normal", incognito: false });
+      return { opened: urls.length, skipped, windowId: window.id };
+    })().finally(() => reopeningWindows.delete(id));
+    reopeningWindows.set(id, task);
+  }
+  return reopeningWindows.get(id);
+}
+
+async function moveSavedItemsToLibrary(payload = {}) {
+  const { node } = await getSavedWindow(payload.captureId);
+  const context = await getBookmarkContext();
+  const target = writableFolder(payload.folderId, context);
+  if (!isDescendantOrSelf(target.id, context.area.managedRoot.id, context.nodeMap)) {
+    throw new Error("Choose a folder inside Library.");
+  }
+  const ids = payload.bookmarkId ? [payload.bookmarkId] : (node.children || []).map((child) => child.id);
+  if (!ids.length) throw new Error("This saved window is empty.");
+  for (const id of ids) {
+    const item = context.nodeMap.get(id);
+    if (!item || (payload.bookmarkId && !item.url) || !isDescendantOrSelf(id, node.id, context.nodeMap) ||
+        !canRemoveSubtree(item, context) || isDescendantOrSelf(target.id, id, context.nodeMap)) {
+      throw new Error("These saved items cannot be moved to that folder.");
+    }
+  }
+  return bulkMove({ ids, folderId: target.id });
 }
 
 async function createFolder(payload = {}) {
@@ -1017,6 +1129,7 @@ async function setUndoSnapshot(snapshot) {
 async function bulkDelete(payload = {}) {
   const context = await getBookmarkContext();
   const { nodeMap } = context;
+  const savedWindows = await updateSavedWindowRecords(context.root);
   const rawIds = Array.from(new Set(payload.ids || []));
   const ids = filterTopLevelSelection(rawIds, nodeMap)
     .filter((id) => canRemoveSubtree(nodeMap.get(id), context));
@@ -1026,10 +1139,13 @@ async function bulkDelete(payload = {}) {
   const snapshots = [];
   for (const id of ids) {
     const node = nodeMap.get(id);
+    const captureIds = new Set();
+    walk(node, (child) => captureIds.add(child.id));
     snapshots.push({
       node: clone(await getSubTree(id)),
       parentId: node.parentId,
-      index: node.index
+      index: node.index,
+      savedWindows: Object.fromEntries(Object.entries(savedWindows).filter(([captureId]) => captureIds.has(captureId)))
     });
   }
 
@@ -1447,12 +1563,18 @@ async function restoreDeletedNode(snapshot, fallbackParentId) {
     title: node.title
   });
 
+  if (snapshot.savedWindows?.[node.id]) {
+    const tree = await chromeCall(chrome.bookmarks.getTree.bind(chrome.bookmarks));
+    await updateSavedWindowRecords(tree[0], { [folder.id]: snapshot.savedWindows[node.id] });
+  }
+
   const children = [...(node.children || [])].sort((a, b) => (a.index || 0) - (b.index || 0));
   for (const child of children) {
     await restoreDeletedNode({
       node: child,
       parentId: folder.id,
-      index: child.index
+      index: child.index,
+      savedWindows: snapshot.savedWindows
     }, folder.id);
   }
 
@@ -1737,6 +1859,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         break;
       case "saveAllWindows":
         result = await saveAllWindows();
+        break;
+      case "reopenSavedWindow":
+        result = await reopenSavedWindow(payload);
+        break;
+      case "moveSavedItemsToLibrary":
+        result = await moveSavedItemsToLibrary(payload);
         break;
       case "saveBookmark":
         result = await saveBookmark(payload);

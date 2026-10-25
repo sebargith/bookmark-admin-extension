@@ -16,6 +16,7 @@ function setup({ bars = [bar()], windows = [], failCreate, beforeChildren } = {}
   const root = { id: "0", children: copy(bars) };
   const calls = [];
   const listeners = {};
+  const storage = {};
   let nextId = 100;
   let windowsReads = 0;
   const event = (name) => ({ addListener: (listener) => { listeners[name] = listener; } });
@@ -51,6 +52,10 @@ function setup({ bars = [bar()], windows = [], failCreate, beforeChildren } = {}
     URL, console, setTimeout, clearTimeout,
     chrome: {
       runtime, bookmarks,
+      storage: { local: {
+        get: (defaults, done) => callback(done, { ...defaults, ...storage }),
+        set: (values, done) => { Object.assign(storage, copy(values)); done(); }
+      } },
       windows: { getAll: (options, done) => {
         assert.deepEqual(copy(options), { populate: true, windowTypes: ["normal", "popup"] });
         windowsReads += 1;
@@ -62,7 +67,7 @@ function setup({ bars = [bar()], windows = [], failCreate, beforeChildren } = {}
     fetch: () => { throw new Error("Window capture must not fetch pages"); }
   });
   vm.runInContext(source, context);
-  return { context, root, calls, listeners, windowsReads: () => windowsReads };
+  return { context, root, calls, listeners, storage, windowsReads: () => windowsReads };
 }
 
 test("captures each window on the bar after the highest number, preserving tab order and duplicates", async () => {
@@ -82,6 +87,7 @@ test("captures each window on the bar after the highest number, preserving tab o
   assert.equal(createdFolders[0].children[0].url, createdFolders[0].children[1].url);
   assert.equal(createdFolders[1].children[0].url, "chrome://settings/");
   assert.ok(fixture.calls.filter((node) => !node.url).every((node) => node.parentId === "bar"));
+  assert.equal(Object.values(fixture.storage.savedWindows).filter((record) => record.capturedAt).length, 2);
 });
 
 test("starts at nuevo1, accepts spaced names, and continues above gaps and very large numbers", async () => {

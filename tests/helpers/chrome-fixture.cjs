@@ -39,6 +39,7 @@ function createFixture() {
   const storage = { settings: { managedRootId: "100", defaultFolderId: "101", lastSavedFolderId: "102" } };
   const mutations = [];
   const tabsCreated = [];
+  const windowsCreated = [];
   const listeners = {};
   let nextId = 1000;
   const event = (name) => ({
@@ -91,7 +92,8 @@ function createFixture() {
       remove(key, callback) { delete storage[key]; callback(); }
     } },
     contextMenus: { onClicked: event("contextMenu") }, commands: { onCommand: event("command") },
-    tabs: { create: (details, callback) => { tabsCreated.push(copy(details)); done(callback, { id: 1, ...details }); } }
+    tabs: { create: (details, callback) => { tabsCreated.push(copy(details)); done(callback, { id: 1, ...details }); } },
+    windows: { create: (details, callback) => { windowsCreated.push(copy(details)); done(callback, { id: 10, ...details }); } }
   };
   chrome.bookmarks.removeTree = chrome.bookmarks.remove;
   for (const name of ["onCreated", "onChanged", "onMoved", "onRemoved", "onChildrenReordered", "onImportEnded"]) {
@@ -100,7 +102,7 @@ function createFixture() {
   const context = vm.createContext({ chrome, URL, console, setTimeout, clearTimeout,
     fetch: () => { throw new Error("Navigation must not fetch pages"); } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "..", "service-worker.js"), "utf8"), context);
-  return { context, root, find, storage, mutations, tabsCreated, chrome, listeners };
+  return { context, root, find, storage, mutations, tabsCreated, windowsCreated, chrome, listeners };
 }
 
 module.exports = { createFixture, copy };

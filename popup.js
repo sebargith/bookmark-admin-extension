@@ -126,6 +126,7 @@ async function saveWindowTabs() {
     if (result.skippedTabCount) parts.push(`${result.skippedTabCount} unsupported ${result.skippedTabCount === 1 ? "tab" : "tabs"} skipped.`);
     if (result.failedTabCount) parts.push(`${result.failedTabCount} ${result.failedTabCount === 1 ? "tab" : "tabs"} could not be saved.`);
     if (result.failedWindowCount) parts.push(`${result.failedWindowCount} window ${result.failedWindowCount === 1 ? "folder" : "folders"} could not be created.`);
+    if (result.metadataFailedWindowCount) parts.push("Bookmarks were saved, but some capture details could not be stored. Keep their nuevo names until storage works again.");
     els.windowSaveStatus.textContent = parts.join(" ");
   } catch (error) {
     els.windowSaveStatus.textContent = error.message || "Could not save the open windows.";
