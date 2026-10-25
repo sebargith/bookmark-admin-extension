@@ -69,6 +69,7 @@ test("confirmation snapshots reject changed captures before opening or moving pa
   const fixture = createFixture();
   await assert.rejects(fixture.context.reopenSavedWindow({ folderId: "110", confirmed: true, expectedUrls: ["https://example.test/outdated"] }), /capture changed/);
   await assert.rejects(fixture.context.moveSavedItemsToLibrary({ captureId: "110", folderId: "101", expectedIds: ["210"] }), /capture changed/);
+  await assert.rejects(fixture.context.moveSavedItemsToLibrary({ captureId: "110", folderId: "101", expectedContents: [] }), /capture changed/);
   assert.deepEqual(fixture.windowsCreated, []);
   assert.deepEqual(fixture.mutations, []);
 });

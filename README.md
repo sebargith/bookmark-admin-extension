@@ -17,6 +17,8 @@ Chrome will create a managed bookmark root named `Bookmark Admin`. Clicking the 
 - Save the current page from the compact toolbar popup, page context menu, or `Alt+Shift+B`.
 - Choose the target folder before saving, with a compact `New` folder action.
 - Save all open Chrome windows into separate numbered folders on the bookmarks bar with `Save all windows`.
+- See saved-window dates and current tab counts, reopen web pages as a window after confirmation, and keep recognized captures identifiable after renaming or moving them.
+- Move one captured bookmark or a capture's contents into a Library folder using a destination picker, preserving native IDs, notes, folder structure, and move undo.
 - Switch between Library, Saved Windows, and All Bookmarks without copying or moving bookmarks.
 - Open the movable full manager overlay from the compact popup, page context menu, or `Alt+Shift+M`.
 - Blur the page behind the manager overlay and close it by clicking outside or pressing `Esc`.
@@ -52,7 +54,7 @@ The extension asks for:
 The manager has three views:
 
 - **Library** shows the existing `Bookmark Admin` folder and its descendants. The compact popup still saves into this library.
-- **Saved Windows** shows `nuevoX` folders directly on either local or account bookmarks bars. A matching folder moved elsewhere or renamed without its `nuevoX` name remains available in All Bookmarks.
+- **Saved Windows** recognizes `nuevoX` folders directly on either local or account bookmarks bars. Once recognized, their native folder IDs are remembered locally, so renaming or moving them does not remove them from this view. Nested captures are listed within their ancestor capture instead of duplicating the same bookmark tree.
 - **All Bookmarks** shows the complete native tree, including other, mobile, and managed bookmarks supplied by Chrome. Chrome's special folders and read-only managed nodes are protected.
 
 Navigation counts represent bookmarks. Search and date/status filters apply within the active view and selected folder. Export includes that view or folder, regardless of search filters. Changes made in Chrome update the open manager automatically. These views do not create extra copies or move existing bookmarks. See [ROADMAP.md](ROADMAP.md) for upcoming improvements.
@@ -70,6 +72,10 @@ Phase-four hierarchy and navigation-memory evaluation: 8.33/10 after one optiona
 Exports started from the floating manager open a dedicated extension-owned tab. The download is created there, so its contents and download link are not inserted into the underlying website. No additional permissions are required.
 
 `Save all windows` creates one folder per non-incognito window directly on the bookmarks bar, named `nuevo1`, `nuevo2`, and so on. It continues after the highest existing numbered folder on that bar (including names such as `nuevo 6`), preserves tab order and repeated URLs, and leaves the windows open. If Chrome exposes both account and local bookmarks bars, it uses the bar with the highest existing `nuevo` number, preferring the account bar when tied. These folders appear in the manager's Saved Windows and All Bookmarks views. The action makes no page-indexing requests. Unsupported or unavailable tab URLs are skipped and failures are reported in the popup. Closing the popup does not cancel a capture already started in the background.
+
+Select a capture to see its actions, or use its folder menu. New captures store their capture timestamp and original saved-tab count locally. Older captures show **Folder created**, not an invented capture date. Counts reflect the current contents, including nested folders. Reopening preserves native bookmark order and repeated URLs, skips non-http/https or invalid links, and requires confirmation. The limit is 100 web pages per operation; oversized captures are rejected without silently truncating them. Reopening uses [Chrome's windows API](https://developer.chrome.com/docs/extensions/reference/api/windows#method-create) without adding permissions. It opens ordinary browser pages, which may use the browser's existing signed-in sessions.
+
+The Library picker can move an individual captured bookmark or all immediate capture contents (keeping subfolders intact). The capture folder remains and can become empty. Undo restores moved items; it does not close reopened browser windows. If a capture changes while an opening/moving confirmation is displayed, cancel and review it again. Local capture identity survives undoing a deletion from this extension, but a folder renamed before it is first recognized, a folder re-imported with new IDs, or a renamed capture on another installation cannot be identified automatically. JSON backups include capture metadata only for folders in the exported scope; HTML preserves native bookmark structure, not extension-only identity.
 
 This is built for personal/local use. The real bookmarks live in Chrome's bookmark system under the `Bookmark Admin` folder, so normal Chrome bookmark sync can sync those bookmark folders and URLs. Extra metadata such as notes, generated search keywords, dead-link status, and open counts is stored locally by the extension.
 

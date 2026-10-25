@@ -535,6 +535,67 @@
   box-shadow: inset 4px 0 0 rgba(56, 189, 248, 0.34);
 }
 
+.ba-folder-label { min-width: 0; }
+.ba-folder-label .ba-name { display: block; width: 100%; padding: 0; }
+.ba-folder-meta {
+  display: block;
+  overflow: hidden;
+  margin-top: 3px;
+  color: #c9b58e;
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ba-capture-folder { min-height: 56px; }
+
+.ba-capture-bar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 10px;
+  border-bottom: 1px solid #514735;
+  background: #24271f;
+}
+.ba-capture-summary {
+  flex: 1 1 100%;
+  color: #e0c99d;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.ba-capture-bar .ba-button { min-height: 30px; padding: 4px 8px; }
+
+.ba-action-layer {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.65);
+}
+.ba-action-dialog {
+  width: min(460px, 100%);
+  min-width: 0;
+  max-height: 100%;
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid #536251;
+  border-radius: 8px;
+  background: #19231f;
+  box-shadow: 0 16px 50px #0008;
+  animation: ba-pop 140ms ease-out;
+}
+.ba-action-dialog h2 { margin: 0 0 12px; font-size: 17px; }
+.ba-action-subject { color: #eff8f1; font-weight: 700; overflow-wrap: anywhere; }
+.ba-action-copy { color: #b6c6bc; }
+.ba-action-field, .ba-action-name { display: grid; gap: 6px; margin: 16px 0; }
+.ba-action-dialog select, .ba-action-dialog input { min-width: 0; width: 100%; }
+.ba-action-error { color: #fda4af; overflow-wrap: anywhere; }
+.ba-action-error:empty { display: none; }
+.ba-action-buttons { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+
 .ba-folder-line[data-depth="0"] {
   border-top-color: #3d5364;
   background: #1c3040;
@@ -1016,7 +1077,7 @@
   .ba-panel-header { padding: 8px 10px; }
   .ba-new-folder { min-height: 28px; padding: 0 8px; }
   .ba-footer { gap: 8px; padding: 6px 10px; }
-  .ba-footer > span:last-child { display: none; }
+  .ba-footer-hint { display: none; }
   .ba-bookmark-row { grid-template-columns: 16px minmax(0, 1fr) 20px 28px; gap: 6px; }
   .ba-bookmark-row .ba-date { display: none; }
 }

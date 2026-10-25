@@ -12,7 +12,9 @@
     folderClosed: assetUrl("icons/folder-closed.svg"),
     folderOpen: assetUrl("icons/folder-open.svg"),
     folderSelected: assetUrl("icons/folder-selected.svg"),
-    index: assetUrl("icons/filter-tag.svg")
+    index: assetUrl("icons/filter-tag.svg"),
+    open: assetUrl("icons/open-manager.svg"),
+    undo: assetUrl("icons/undo.svg")
   };
   const ILLUSTRATIONS = {
     emptyLibrary: assetUrl("illustrations/empty-library.svg"),
@@ -41,7 +43,9 @@
     detailDrawer: false,
     dragging: null,
     loadSequence: 0,
-    refreshTimer: null
+    refreshTimer: null,
+    action: null,
+    actionBusy: false
   };
 
   const existing = document.getElementById(ROOT_ID);
@@ -131,6 +135,7 @@
             <span class="ba-list-count ba-muted"></span>
           </div>
           <nav class="ba-breadcrumbs" aria-label="Folder path"></nav>
+          <section class="ba-capture-bar" aria-label="Saved window" hidden></section>
           <div class="ba-bookmark-list"></div>
         </section>
         <button class="ba-detail-scrim" type="button" aria-label="Dismiss details" tabindex="-1"></button>
@@ -138,8 +143,10 @@
       </section>
       <footer class="ba-footer">
         <span class="ba-status">Ready.</span>
-        <span>Right-click folders or bookmarks for actions.</span>
+        <span class="ba-footer-hint">Right-click folders or bookmarks for actions.</span>
+        <button class="ba-button ba-undo" type="button" hidden><img src="${ICONS.undo}" alt=""><span>Undo</span></button>
       </footer>
+      <div class="ba-action-layer" hidden></div>
     </section>
     <div class="ba-menu ba-hidden"></div>
   `;
@@ -160,6 +167,9 @@
     expandAll: root.querySelector(".ba-expand-all"),
     collapseAll: root.querySelector(".ba-collapse-all"),
     breadcrumbs: root.querySelector(".ba-breadcrumbs"),
+    captureBar: root.querySelector(".ba-capture-bar"),
+    actionLayer: root.querySelector(".ba-action-layer"),
+    undo: root.querySelector(".ba-undo"),
     search: root.querySelector(".ba-search"),
     dateFilter: root.querySelector(".ba-date-filter"),
     sort: root.querySelector(".ba-sort"),
@@ -211,6 +221,10 @@
     els.overview.addEventListener("click", () => selectFolder(null).catch(showError));
     els.expandAll.addEventListener("click", () => setAllExpanded(true));
     els.collapseAll.addEventListener("click", () => setAllExpanded(false));
+    els.undo.addEventListener("click", async () => {
+      try { await flushNotes(); const result = await send("undoLast"); await load(result.undone); }
+      catch (error) { showError(error); }
+    });
     els.backdrop.addEventListener("pointerdown", () => {
       if (!IS_STANDALONE) closeOverlay().catch(showError);
     });
@@ -315,6 +329,7 @@
     renderNavigation();
     renderTree();
     renderBreadcrumbs();
+    renderCaptureBar();
     renderBookmarks();
     renderDetail();
     restoreNavigationFocus(navigationFocus);
@@ -364,6 +379,46 @@
     if (view === "library") return [folderById(state.data.managedRoot.id)].filter(Boolean);
     if (view === "windows") return state.data.savedWindowFolderIds.map(folderById).filter(Boolean);
     return state.data.root.children || [];
+  }
+
+  function captureById(id) {
+    return state.data.savedWindows.find((capture) => capture.folderId === id);
+  }
+
+  function captureForBookmark(bookmark) {
+    return [bookmark.folderId, ...bookmark.folderAncestors.slice().reverse()].map(captureById).find(Boolean);
+  }
+
+  function captureDate(capture, compact = false) {
+    const value = capture.capturedAt || capture.dateAdded;
+    if (!value) return "Date unavailable";
+    const date = compact ? formatDate(value) : new Date(value).toLocaleString();
+    return `${capture.capturedAt ? "Captured" : "Folder created"} ${date}`;
+  }
+
+  function renderCaptureBar() {
+    const capture = captureById(state.selectedFolderId);
+    els.captureBar.hidden = !capture;
+    els.captureBar.textContent = "";
+    els.undo.hidden = !state.data.lastUndo;
+    els.undo.title = state.data.lastUndo?.label || "Undo last action";
+    if (!capture) return;
+    const summary = document.createElement("span");
+    summary.className = "ba-capture-summary";
+    summary.textContent = `${capture.tabCount} ${capture.tabCount === 1 ? "tab" : "tabs"} | ${captureDate(capture)}`;
+    summary.title = capture.originalTabCount === null ? "Original capture date and count are unknown" : `${capture.originalTabCount} tabs originally saved`;
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "ba-button ba-blue";
+    open.innerHTML = `<img src="${ICONS.open}" alt=""><span>Open window</span>`;
+    open.addEventListener("click", () => openCaptureAction("open", capture).catch(showError));
+    const move = document.createElement("button");
+    move.type = "button";
+    move.className = "ba-button";
+    move.innerHTML = `<img src="${ICONS.folderOpen}" alt=""><span>Move to Library</span>`;
+    move.disabled = !capture.tabCount || state.data.readOnlyNodeIds.includes(capture.folderId);
+    move.addEventListener("click", () => openCaptureAction("move", capture).catch(showError));
+    els.captureBar.append(summary, open, move);
   }
 
   function scopeBookmarks(view = state.view) {
@@ -555,6 +610,18 @@
     name.title = state.data.folders.find((node) => node.id === folder.id)?.path || folder.title;
     if (selected) name.setAttribute("aria-current", "true");
     name.addEventListener("click", () => selectFolder(folder.id).catch(showError));
+    const label = document.createElement("div");
+    label.className = "ba-folder-label";
+    label.append(name);
+    const capture = captureById(folder.id);
+    if (capture) {
+      row.classList.add("ba-capture-folder");
+      const meta = document.createElement("span");
+      meta.className = "ba-folder-meta";
+      meta.textContent = `${capture.tabCount} ${capture.tabCount === 1 ? "tab" : "tabs"} | ${captureDate(capture, true)}`;
+      meta.title = captureDate(capture);
+      label.append(meta);
+    }
 
     const count = document.createElement("span");
     count.className = "ba-count";
@@ -567,7 +634,7 @@
     menu.addEventListener("click", (event) => showFolderMenu(event, folder, isRoot));
 
     menu.setAttribute("aria-label", `Options for ${folder.title}`);
-    row.append(disclosure, folderIcon, name, count, menu);
+    row.append(disclosure, folderIcon, label, count, menu);
     item.append(row);
 
     if (expanded) {
@@ -873,6 +940,12 @@
   }
 
   function containDrawerFocus() {
+    if (state.action && !els.actionLayer.hidden) {
+      if (!els.actionLayer.contains((shadow || document).activeElement)) {
+        (els.actionLayer.querySelector("button:not(:disabled), input:not(:disabled), select:not(:disabled)") || els.actionLayer.querySelector("form"))?.focus();
+      }
+      return;
+    }
     if (!state.detailDrawer || !root.isConnected || els.detail.contains((shadow || document).activeElement)) return;
     els.detail.querySelector(state.detailMode === "notes" ? "textarea" : ".ba-detail-title")?.focus();
   }
@@ -958,6 +1031,7 @@
       { label: "Check links", action: () => checkIds([folder.id]) },
       { label: "Refresh page index", action: () => refreshIndex([folder.id]) }
     ];
+    const capture = captureById(folder.id);
     if (!readOnly) items.splice(1, 0,
       { label: "New subfolder", action: () => createFolder(folder.id) },
       { label: "Sort this folder", action: () => sortFolder(folder.id) }
@@ -965,11 +1039,16 @@
     if (!protectedFolder && !readOnly) {
       items.push(
         { separator: true },
-        { label: "Rename", action: () => renameNode(folder.id, folder.title) },
+        { label: "Rename", action: () => capture ? openCaptureAction("rename", capture) : renameNode(folder.id, folder.title) },
         { label: "Move folder", action: () => moveIds([folder.id]) },
         { label: "Delete folder", danger: true, action: () => deleteIds([folder.id]) }
       );
     }
+    if (capture) items.unshift(
+      { label: "Open as window", action: () => openCaptureAction("open", capture) },
+      ...(!readOnly ? [{ label: "Move contents to Library", action: () => openCaptureAction("move", capture) }] : []),
+      { separator: true }
+    );
     showMenu(event, items);
   }
 
@@ -985,6 +1064,8 @@
       { label: "Check link", action: () => checkIds([bookmark.id]) }
     ];
     if (!state.data.readOnlyNodeIds.includes(bookmark.id)) {
+      const capture = captureForBookmark(bookmark);
+      if (capture) items.unshift({ label: "Move to Library", action: () => openCaptureAction("move", capture, bookmark) });
       items.splice(3, 0,
         { label: "Move", action: () => moveIds([bookmark.id]) },
         { label: "Rename", action: () => renameNode(bookmark.id, bookmark.title) }
@@ -992,6 +1073,122 @@
       items.push({ separator: true }, { label: "Delete", danger: true, action: () => deleteIds([bookmark.id]) });
     }
     showMenu(event, items);
+  }
+
+  async function openCaptureAction(type, capture, bookmark = null) {
+    await flushNotes();
+    const folder = folderById(capture.folderId);
+    if (!folder) throw new Error("Saved window not found.");
+    state.detailBookmark = null;
+    renderDetail();
+    state.action = { type, capture, bookmark, returnFocus: shadow?.activeElement || document.activeElement };
+    const sourceBookmarks = state.data.bookmarks.filter((item) => item.folderId === folder.id || item.folderAncestors.includes(folder.id));
+    const urls = [];
+    walk(folder, (item) => {
+      try { if (item.url && ["http:", "https:"].includes(new URL(item.url).protocol)) urls.push(item.url); } catch {}
+    });
+    state.action.expectedUrls = urls;
+    state.action.expectedContents = [];
+    walk(folder, (item) => { if (item.id !== folder.id) state.action.expectedContents.push([item.id, item.parentId, item.url || null]); });
+    state.action.expectedIds = bookmark ? [bookmark.id] : (folder.children || []).map((item) => item.id);
+    els.actionLayer.innerHTML = `<form class="ba-action-dialog" role="dialog" aria-modal="true" aria-labelledby="ba-action-title" tabindex="-1">
+      <h2 id="ba-action-title"></h2><p class="ba-action-subject"></p><p class="ba-action-copy"></p>
+      <label class="ba-action-field" hidden><span></span><select class="ba-select" aria-label="Destination folder"></select></label>
+      <label class="ba-action-name" hidden><span>Name</span><input class="ba-input" aria-label="Capture name" maxlength="300"></label>
+      <p class="ba-action-error" role="alert"></p>
+      <div class="ba-action-buttons"><button class="ba-button ba-action-cancel" type="button">Cancel</button><button class="ba-button ba-blue ba-action-submit" type="submit"></button></div>
+    </form>`;
+    const form = els.actionLayer.querySelector("form");
+    form.querySelector("h2").textContent = type === "open" ? "Open saved window" : type === "rename" ? "Rename saved window" : "Move to Library";
+    form.querySelector(".ba-action-subject").textContent = bookmark ? bookmarkTitle(bookmark) : folder.title;
+    const submit = form.querySelector(".ba-action-submit");
+    submit.textContent = type === "open" ? "Open window" : type === "rename" ? "Rename" : "Move";
+    if (type === "open") {
+      const skipped = sourceBookmarks.length - urls.length;
+      form.querySelector(".ba-action-copy").textContent = `${urls.length} web pages will open in a new window.${skipped ? ` ${skipped} non-web or invalid links will be skipped.` : ""}`;
+      if (!urls.length || urls.length > 100) {
+        submit.disabled = true;
+        form.querySelector(".ba-action-error").textContent = urls.length ? "Open at most 100 pages at once. Split this capture into smaller folders first." : "No http or https pages to open.";
+      }
+    } else if (type === "move") {
+      form.querySelector(".ba-action-copy").textContent = bookmark ? "Move this bookmark. Its notes and native bookmark ID will be kept." : `${capture.tabCount} bookmarks in this capture will move with their folder structure. The capture folder will remain.`;
+      const field = form.querySelector(".ba-action-field");
+      field.hidden = false;
+      field.querySelector("span").textContent = "Destination folder";
+      const select = field.querySelector("select");
+      const libraryId = state.data.managedRoot.id;
+      for (const destination of state.data.folders) {
+        if (state.data.readOnlyNodeIds.includes(destination.id)) continue;
+        const trail = folderTrail(destination.id);
+        if (!trail.some((item) => item.id === libraryId)) continue;
+        if (state.action.expectedIds.some((id) => trail.some((item) => item.id === id))) continue;
+        const option = document.createElement("option");
+        option.value = destination.id;
+        option.textContent = trail.slice(trail.findIndex((item) => item.id === libraryId)).map(folderDisplayName).join(" / ");
+        select.append(option);
+      }
+      select.value = [...select.options].some((option) => option.value === state.data.defaultFolder.id) ? state.data.defaultFolder.id : select.options[0]?.value || "";
+      submit.disabled = !select.value || !state.action.expectedIds.length;
+    } else {
+      form.querySelector(".ba-action-name").hidden = false;
+      form.querySelector("input").required = true;
+      form.querySelector("input").value = folder.title;
+    }
+    form.querySelector(".ba-action-cancel").addEventListener("click", closeCaptureAction);
+    els.actionLayer.onclick = (event) => { if (event.target === els.actionLayer) closeCaptureAction(); };
+    form.addEventListener("submit", submitCaptureAction);
+    els.actionLayer.hidden = false;
+    for (const child of els.win.children) if (child !== els.actionLayer) child.inert = true;
+    (form.querySelector(type === "rename" ? "input" : type === "move" ? "select" : ".ba-action-cancel")).focus();
+  }
+
+  function closeCaptureAction() {
+    if (state.actionBusy) return;
+    const action = state.action;
+    state.action = null;
+    els.actionLayer.hidden = true;
+    els.actionLayer.textContent = "";
+    for (const child of els.win.children) child.inert = false;
+    syncDetailFocus();
+    const row = action && els.tree.querySelector(`[data-folder-id="${CSS.escape(action.capture.folderId)}"] .ba-name`);
+    (action?.returnFocus?.isConnected && action.returnFocus.getClientRects().length ? action.returnFocus : row || els.search).focus();
+  }
+
+  async function submitCaptureAction(event) {
+    event.preventDefault();
+    if (state.actionBusy || !state.action) return;
+    const action = state.action;
+    const form = event.currentTarget;
+    const destination = form.querySelector("select").value;
+    const title = form.querySelector("input").value.trim();
+    if (action.type === "rename" && !title) {
+      form.querySelector(".ba-action-error").textContent = "Enter a name.";
+      return;
+    }
+    state.actionBusy = true;
+    const controls = [...form.querySelectorAll("button,input,select")];
+    controls.forEach((control) => { control.disabled = true; });
+    try {
+      let status;
+      if (action.type === "open") {
+        const result = await send("reopenSavedWindow", { folderId: action.capture.folderId, confirmed: true, expectedUrls: action.expectedUrls });
+        status = `Opened ${result.opened} pages.${result.skipped ? ` Skipped ${result.skipped}.` : ""}`;
+      } else if (action.type === "rename") {
+        await send("renameNode", { id: action.capture.folderId, title });
+        status = "Saved window renamed.";
+      } else {
+        const result = await send("moveSavedItemsToLibrary", { captureId: action.capture.folderId, bookmarkId: action.bookmark?.id, folderId: destination, expectedIds: action.expectedIds,
+          expectedContents: action.bookmark ? undefined : action.expectedContents });
+        status = `Moved ${result.moved} items to Library. Undo is available.`;
+      }
+      state.actionBusy = false;
+      closeCaptureAction();
+      await load(status);
+    } catch (error) {
+      state.actionBusy = false;
+      controls.forEach((control) => { control.disabled = false; });
+      form.querySelector(".ba-action-error").textContent = error.message;
+    }
   }
 
   function showMenu(event, items) {
@@ -1255,26 +1452,29 @@
   }
 
   function onKeyDown(event) {
-    if (event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey && state.detailDrawer) {
-      const controls = [...els.detail.querySelectorAll("button, textarea, input, select, a[href], [tabindex]")]
+    if (event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey && (state.action || state.detailDrawer)) {
+      const surface = state.action ? els.actionLayer : els.detail;
+      const controls = [...surface.querySelectorAll("button, textarea, input, select, a[href], [tabindex]")]
         .filter((node) => node.tabIndex >= 0 && !node.disabled && node.getClientRects().length);
       const index = controls.indexOf((shadow || document).activeElement);
-      if (controls.length && (index < 0 || event.shiftKey && index === 0 || !event.shiftKey && index === controls.length - 1)) {
+      if (!controls.length || index < 0 || event.shiftKey && index === 0 || !event.shiftKey && index === controls.length - 1) {
         event.preventDefault();
         event.stopPropagation();
-        controls[event.shiftKey ? controls.length - 1 : 0].focus();
+        (controls[event.shiftKey ? controls.length - 1 : 0] || surface.querySelector("form"))?.focus();
       }
       return;
     }
     if (event.key !== "Escape") return;
     event.preventDefault();
     event.stopPropagation();
-    if (!els.menu.classList.contains("ba-hidden")) hideMenu();
+    if (state.action) closeCaptureAction();
+    else if (!els.menu.classList.contains("ba-hidden")) hideMenu();
     else if (state.detailBookmark) closeDetails().catch(showError);
     else closeOverlay().catch(showError);
   }
 
   async function closeOverlay() {
+    if (state.action) { closeCaptureAction(); return; }
     await flushNotes();
     if (state.navigationWrite) await state.navigationWrite.catch(() => persistNavigation());
     if (IS_STANDALONE) {

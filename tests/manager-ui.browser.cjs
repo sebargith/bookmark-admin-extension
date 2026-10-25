@@ -37,6 +37,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
         renameNode: "renameNode", bulkMove: "bulkMove", bulkDelete: "bulkDelete", openBookmark: "openBookmark",
         updateMetadata: "updateMetadata", checkLinks: "checkLinks", refreshIndex: "refreshIndex", sortFolder: "sortFolder",
         buildExport: "buildExport", openExportPage: "openExportPage" };
+      Object.assign(commands, { reopenSavedWindow: "reopenSavedWindow", moveSavedItemsToLibrary: "moveSavedItemsToLibrary", undoLast: "undoLast" });
       try {
         if (type === "updateMetadata") {
           if (rejectNotes) throw new Error("Simulated storage failure");
@@ -198,6 +199,90 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await navigate(() => page.getByRole("button", { name: "Collapse all folders", exact: true }).click());
     await waitRows(2);
     assertions += 8;
+    const beforeCaptureWorkflows = copy(fixture.root);
+    const captureSaveSettings = copy(fixture.storage.settings);
+    await view("Saved Windows");
+    await waitRows(3);
+    assert.match(await page.locator('[data-folder-id="110"] .ba-folder-meta').innerText(), /2 tabs.*Folder created/);
+    await page.locator('[data-folder-id="110"] .ba-name').click();
+    await waitRows(2);
+    assert.match(await page.locator(".ba-capture-bar").innerText(), /2 tabs/);
+    const actionDialog = page.locator(".ba-action-dialog");
+    const openCapture = () => page.locator(".ba-capture-bar").getByRole("button", { name: "Open window", exact: true }).click();
+    await openCapture();
+    await actionDialog.waitFor();
+    assert.equal(await actionDialog.getAttribute("aria-modal"), "true");
+    assert.equal(await page.locator(".ba-layout").evaluate((node) => node.inert), true);
+    for (const key of ["Tab", "Shift+Tab"]) for (let i = 0; i < 5; i += 1) {
+      await page.keyboard.press(key);
+      assert.equal(await actionDialog.evaluate((node) => node.contains(document.activeElement)), true);
+    }
+    await actionDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await actionDialog.waitFor({ state: "hidden" });
+    assert.equal(fixture.windowsCreated.length, 0);
+    const createWindow = fixture.chrome.windows.create;
+    fixture.chrome.windows.create = () => { throw new Error("Simulated window failure"); };
+    await openCapture();
+    await actionDialog.getByRole("button", { name: "Open window", exact: true }).click();
+    await actionDialog.locator(".ba-action-error").filter({ hasText: /Simulated window failure/ }).waitFor();
+    fixture.chrome.windows.create = createWindow;
+    await actionDialog.getByRole("button", { name: "Open window", exact: true }).click();
+    await actionDialog.waitFor({ state: "hidden" });
+    assert.deepEqual(fixture.windowsCreated[0].url, ["https://example.test/210", "https://example.test/211"]);
+    await page.locator('[data-folder-id="110"] .ba-icon-btn').click();
+    await page.locator(".ba-menu button", { hasText: /^Rename$/ }).click();
+    await actionDialog.getByRole("textbox", { name: "Capture name", exact: true }).fill("Design research session");
+    await page.screenshot({ path: path.join(artifacts, "capture-rename.png"), animations: "disabled" });
+    await actionDialog.getByRole("button", { name: "Rename", exact: true }).click();
+    await actionDialog.waitFor({ state: "hidden" });
+    await page.locator(".ba-list-title").filter({ hasText: /^Design research session$/ }).waitFor();
+    assert.equal(await page.getByRole("tab", { name: /^Saved Windows/ }).getAttribute("aria-selected"), "true");
+    await page.locator(".ba-undo").click();
+    await page.locator(".ba-list-title").filter({ hasText: /^nuevo6$/ }).waitFor();
+    await page.locator('.ba-bookmark-list [data-bookmark-id="210"] .ba-icon-btn').click();
+    await page.locator(".ba-menu button", { hasText: /^Move to Library$/ }).click();
+    await actionDialog.getByRole("combobox", { name: "Destination folder", exact: true }).selectOption("102");
+    assert.deepEqual(await actionDialog.locator("select option").evaluateAll((items) => items.map((item) => item.value)), ["100", "101", "102"]);
+    await actionDialog.getByRole("button", { name: "Move", exact: true }).click();
+    await actionDialog.waitFor({ state: "hidden" });
+    await waitRows(1);
+    assert.equal(fixture.find("210").parentId, "102");
+    assert.equal(fixture.find("211").parentId, "110");
+    await page.locator(".ba-undo").click();
+    await waitRows(2);
+    await page.locator(".ba-capture-bar").getByRole("button", { name: "Move to Library", exact: true }).click();
+    await actionDialog.getByRole("combobox", { name: "Destination folder", exact: true }).selectOption("102");
+    await page.screenshot({ path: path.join(artifacts, "capture-move.png"), animations: "disabled" });
+    await actionDialog.getByRole("button", { name: "Move", exact: true }).click();
+    await actionDialog.waitFor({ state: "hidden" });
+    await waitRows(0);
+    assert.equal(fixture.find("110").children.length, 0);
+    assert.match(await page.locator(".ba-capture-bar").innerText(), /0 tabs/);
+    await page.locator(".ba-undo").click();
+    await waitRows(2);
+    await openCapture();
+    const oldUrl = fixture.find("211").url;
+    fixture.find("211").url = "https://example.test/changed-before-confirmation";
+    await page.evaluate(() => globalThis.__bookmarkChange());
+    await actionDialog.getByRole("button", { name: "Open window", exact: true }).click();
+    await actionDialog.locator(".ba-action-error").filter({ hasText: /capture changed/ }).waitFor();
+    assert.equal(fixture.windowsCreated.length, 1);
+    await page.keyboard.press("Escape");
+    await actionDialog.waitFor({ state: "hidden" });
+    assert.equal(await page.locator(".ba-layout").evaluate((node) => node.inert), false);
+    fixture.find("211").url = oldUrl;
+    fixture.storage.savedWindows["110"] = { capturedAt: Date.UTC(2026, 9, 25, 12), originalTabCount: 2 };
+    await page.evaluate(() => globalThis.__bookmarkChange());
+    await page.locator('[data-folder-id="110"] .ba-folder-meta').filter({ hasText: /Captured/ }).waitFor();
+    await page.screenshot({ path: path.join(artifacts, "capture-desktop.png"), animations: "disabled" });
+    assert.deepEqual(fixture.root, beforeCaptureWorkflows);
+    assert.deepEqual(fixture.storage.settings, captureSaveSettings);
+    fixture.mutations.length = 0;
+    await page.getByRole("button", { name: /^All saved windows/ }).click();
+    await waitRows(3);
+    await view("Library");
+    await waitRows(2);
+    assertions += 26;
     assert.equal(await page.locator(".ba-detail").isVisible(), false);
     const fullListWidth = (await page.locator(".ba-bookmark-list").boundingBox()).width;
     const before = copy(fixture.root);
@@ -471,6 +556,25 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
         const folderHeight = (await page.locator(".ba-folder-line").first().boundingBox()).height;
         assert.ok(treeHeight >= folderHeight * 2, `Tree ${treeHeight}px must fit two folder rows of ${folderHeight}px`);
         assertions += 1;
+        await view("Saved Windows");
+        await page.locator('[data-folder-id="110"] .ba-name').click();
+        await waitRows(2);
+        await page.screenshot({ path: path.join(artifacts, "capture-390.png"), animations: "disabled" });
+        await openCapture();
+        await actionDialog.waitFor();
+        const actionGeometry = await actionDialog.evaluate((node) => {
+          const rect = node.getBoundingClientRect();
+          return { inside: rect.left >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
+            overflow: node.scrollWidth > node.clientWidth + 1 };
+        });
+        assert.deepEqual(actionGeometry, { inside: true, overflow: false });
+        await page.screenshot({ path: path.join(artifacts, "capture-confirm-390.png"), animations: "disabled" });
+        await page.keyboard.press("Escape");
+        await actionDialog.waitFor({ state: "hidden" });
+        assert.equal(await page.locator("#bookmark-admin-overlay").count(), 1);
+        await view("All Bookmarks");
+        await waitRows(51);
+        assertions += 2;
       }
       if (viewport.resize || viewport.width === 390) {
         const priorWidth = (await page.locator(".ba-bookmark-list").boundingBox()).width;
