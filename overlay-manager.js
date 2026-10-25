@@ -36,6 +36,7 @@
     detailBookmark: null,
     detailMode: "notes",
     detailRenderKey: null,
+    detailDrawer: false,
     dragging: null,
     loadSequence: 0,
     refreshTimer: null
@@ -110,7 +111,7 @@
         <button class="ba-button ba-export" type="button"><img src="${ICONS.export}" alt=""><span>Export</span></button>
       </section>
       <section class="ba-layout" id="ba-manager-content" role="tabpanel" aria-labelledby="ba-view-library">
-        <section class="ba-panel">
+        <section class="ba-panel ba-library-panel">
           <div class="ba-panel-header">
             <h2 class="ba-tree-title">Library</h2>
             <button class="ba-button ba-new-folder" type="button"><img src="${ICONS.folderOpen}" alt=""><span>New folder</span></button>
@@ -118,7 +119,7 @@
           <button class="ba-overview" type="button" aria-pressed="true"><span class="ba-overview-label">All in Library</span><span class="ba-overview-count"></span></button>
           <ul class="ba-folder-tree" aria-label="Library folders"></ul>
         </section>
-        <section class="ba-panel">
+        <section class="ba-panel ba-list-panel">
           <div class="ba-panel-header">
             <h2 class="ba-list-title">Bookmarks</h2>
             <span class="ba-list-count ba-muted"></span>
@@ -163,6 +164,8 @@
     bookmarkList: root.querySelector(".ba-bookmark-list"),
     detail: root.querySelector(".ba-detail"),
     detailScrim: root.querySelector(".ba-detail-scrim"),
+    treePanel: root.querySelector(".ba-library-panel"),
+    listPanel: root.querySelector(".ba-list-panel"),
     status: root.querySelector(".ba-status"),
     menu: root.querySelector(".ba-menu")
   };
@@ -231,9 +234,12 @@
       if (!els.menu.contains(event.target)) hideMenu();
     });
     document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("focusin", containDrawerFocus, true);
     els.titlebar.addEventListener("pointerdown", beginDrag);
     chrome.storage.onChanged.addListener(onStorageChanged);
     window.addEventListener("pagehide", onPageHide);
+    state.detailResizeObserver = new ResizeObserver(syncDetailFocus);
+    state.detailResizeObserver.observe(els.win);
   }
 
   function send(type, payload = {}) {
@@ -261,13 +267,17 @@
     if (notesRevision !== state.notesRevision) return load(status);
     state.data = data;
     if (state.selectedFolderId && !folderInView(state.selectedFolderId)) state.selectedFolderId = null;
-    if (state.detailBookmark && !findFlatBookmark(state.detailBookmark.id)) {
+    const currentDetail = state.detailBookmark && findFlatBookmark(state.detailBookmark.id);
+    const urlChanged = currentDetail && currentDetail.url !== state.detailBookmark.url;
+    if (state.detailBookmark && (!currentDetail || urlChanged)) {
       await flushNotes();
       if (sequence !== state.loadSequence || !root.isConnected) return;
-      state.detailBookmark = null;
+      state.detailBookmark = currentDetail || null;
+      state.detailRenderKey = null;
     }
     render();
     if (status) setStatus(status);
+    else if (urlChanged) setStatus("Bookmark URL changed. Details refreshed.");
   }
 
   function render() {
@@ -612,12 +622,13 @@
     if (!state.detailBookmark) {
       els.detail.textContent = "";
       state.detailRenderKey = null;
+      syncDetailFocus();
       return;
     }
 
     const bookmark = findFlatBookmark(state.detailBookmark.id) || state.detailBookmark;
     const meta = bookmark.metadata || {};
-    const key = `${bookmark.id}:${state.detailMode}`;
+    const key = `${bookmark.id}:${state.detailMode}:${bookmark.url}`;
     if (key === state.detailRenderKey && state.detailMode === "notes") {
       const textarea = els.detail.querySelector("textarea");
       els.detail.querySelector(".ba-detail-title").textContent = bookmarkTitle(bookmark);
@@ -625,6 +636,7 @@
         textarea.value = meta.notes || "";
       }
       updateNoteStatus();
+      syncDetailFocus();
       return;
     }
     state.detailRenderKey = key;
@@ -701,6 +713,22 @@
         content.append(tags);
       }
     }
+    syncDetailFocus();
+  }
+
+  function syncDetailFocus() {
+    state.detailDrawer = !els.detail.hidden && getComputedStyle(els.detailScrim).display !== "none";
+    els.treePanel.inert = state.detailDrawer;
+    els.listPanel.inert = state.detailDrawer;
+    els.detail.setAttribute("role", state.detailDrawer ? "dialog" : "complementary");
+    if (state.detailDrawer) els.detail.setAttribute("aria-modal", "true");
+    else els.detail.removeAttribute("aria-modal");
+    containDrawerFocus();
+  }
+
+  function containDrawerFocus() {
+    if (!state.detailDrawer || !root.isConnected || els.detail.contains((shadow || document).activeElement)) return;
+    els.detail.querySelector(state.detailMode === "notes" ? "textarea" : ".ba-detail-title")?.focus();
   }
 
   function fullDate(value) {
@@ -1078,6 +1106,17 @@
   }
 
   function onKeyDown(event) {
+    if (event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey && state.detailDrawer) {
+      const controls = [...els.detail.querySelectorAll("button, textarea, input, select, a[href], [tabindex]")]
+        .filter((node) => node.tabIndex >= 0 && !node.disabled && node.getClientRects().length);
+      const index = controls.indexOf((shadow || document).activeElement);
+      if (controls.length && (index < 0 || event.shiftKey && index === 0 || !event.shiftKey && index === controls.length - 1)) {
+        event.preventDefault();
+        event.stopPropagation();
+        controls[event.shiftKey ? controls.length - 1 : 0].focus();
+      }
+      return;
+    }
     if (event.key !== "Escape") return;
     event.preventDefault();
     event.stopPropagation();
@@ -1099,6 +1138,8 @@
 
   function disposeOverlay() {
     document.removeEventListener("keydown", onKeyDown, true);
+    document.removeEventListener("focusin", containDrawerFocus, true);
+    state.detailResizeObserver.disconnect();
     chrome.storage.onChanged.removeListener(onStorageChanged);
     window.removeEventListener("pagehide", onPageHide);
     clearTimeout(state.noteTimer);

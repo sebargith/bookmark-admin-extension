@@ -53,6 +53,9 @@ details before the manager. Pending edits are flushed on panel close, bookmark
 or view changes, and controlled manager close. Failed saves retain the draft and
 offer retry. Worker metadata writes are serialized, and indexing/link checking
 merge only their own fields so they cannot replace recently saved notes.
+External URL changes refresh editor bindings after flushing original-URL drafts.
+Drawer mode makes covered panels inert and contains keyboard focus. Stale manager
+reads are fetched again if notes were saved while the request was in flight.
 
 ## 4. Folder hierarchy and navigation memory (planned)
 

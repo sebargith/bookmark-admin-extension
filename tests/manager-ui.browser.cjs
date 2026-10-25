@@ -31,7 +31,6 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
   let assertions = 0;
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true, reducedMotion: "reduce" });
-    await context.exposeBinding("__managerReadCount", () => managerReads);
     await context.exposeBinding("__bookmarkRequest", async (source, type, payload) => {
       if (type === "getCurrentTab") return { ok: true, result: { title: "Sample page", url: "https://example.test" } };
       const commands = { getManagerState: "getManagerState", getState: "getManagedState", createFolder: "createFolder",
@@ -47,7 +46,11 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
         const result = copy(await fixture.context[commands[type]](payload));
         if (type === "getManagerState") {
           managerReads += 1;
-          if (holdManagerRead) await holdManagerRead;
+          const gate = holdManagerRead;
+          if (gate) {
+            await source.frame.evaluate(() => { globalThis.__managerReadHeld = true; });
+            await gate;
+          }
         }
         return { ok: true, result };
       }
@@ -63,6 +66,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
             return globalThis.__bookmarkRequest(message.type, message.payload).then((response) => {
               reply(response);
               if (message.type === "getManagerState") globalThis.__managerReplies = (globalThis.__managerReplies || 0) + 1;
+              if (message.type === "updateMetadata") globalThis.__noteReplies = (globalThis.__noteReplies || 0) + 1;
             });
           }
         },
@@ -129,7 +133,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     const readsBefore = managerReads;
     const repliesBefore = await page.evaluate(() => globalThis.__managerReplies);
     await page.evaluate(() => globalThis.__bookmarkChange());
-    await page.waitForFunction(async (previous) => await globalThis.__managerReadCount() > previous, readsBefore);
+    await page.waitForFunction(() => globalThis.__managerReadHeld === true);
     assert.ok(managerReads > readsBefore);
     await page.locator(".ba-detail textarea").fill("Saved after an older read began");
     await page.getByRole("button", { name: "Close details", exact: true }).click();
@@ -189,12 +193,11 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     assert.equal(await page.locator(".ba-bookmark-list").getByRole("button", { name: "Options for Library saved page", exact: true }).evaluate((node) => node === document.activeElement), true);
     assertions += 16;
     await openNotes("Library saved page");
+    const noteReplies = await page.evaluate(() => globalThis.__noteReplies || 0);
     await page.locator(".ba-detail textarea").fill("Latest draft sent on page exit");
     await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
-    await page.waitForFunction(async () => {
-      const response = await globalThis.__bookmarkRequest("getManagerState", {});
-      return response.result.metadataByUrl["https://example.test/200"].notes === "Latest draft sent on page exit";
-    });
+    await page.waitForFunction((previous) => globalThis.__noteReplies > previous, noteReplies);
+    assert.equal(fixture.storage.metadataByUrl["https://example.test/200"].notes, "Latest draft sent on page exit");
     await page.locator(".ba-detail").getByRole("tab", { name: "Notes", exact: true }).focus();
     await page.keyboard.press("ArrowRight");
     await page.waitForFunction(() => document.querySelector('.ba-detail-tab[data-mode="properties"]').getAttribute("aria-selected") === "true");
@@ -210,13 +213,24 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await page.evaluate(() => globalThis.__bookmarkChange());
     await waitRows(3);
     await openNotes("Temporary details bookmark");
+    await page.locator(".ba-detail textarea").fill("Draft belongs to the original URL");
+    fixture.find("temp-details").url = "https://example.test/temp-details-updated";
+    await page.evaluate(() => globalThis.__bookmarkChange());
+    await page.waitForFunction(() => document.querySelector(".ba-status").textContent === "Bookmark URL changed. Details refreshed.");
+    assert.equal(fixture.storage.metadataByUrl["https://example.test/temp-details"].notes, "Draft belongs to the original URL");
+    assert.equal(await page.locator(".ba-detail textarea").inputValue(), "");
+    await page.locator(".ba-detail textarea").fill("New note belongs to the updated URL");
+    await page.getByRole("button", { name: "Close details", exact: true }).click();
+    await page.locator(".ba-detail").waitFor({ state: "hidden" });
+    assert.equal(fixture.storage.metadataByUrl["https://example.test/temp-details-updated"].notes, "New note belongs to the updated URL");
+    await openNotes("Temporary details bookmark");
     await page.locator(".ba-detail textarea").fill("Pending note when bookmark is removed");
     fixture.find("101").children = fixture.find("101").children.filter((node) => node.id !== "temp-details");
     await page.evaluate(() => globalThis.__bookmarkChange());
     await page.locator(".ba-detail").waitFor({ state: "hidden" });
     await waitRows(2);
-    assert.equal(fixture.storage.metadataByUrl["https://example.test/temp-details"].notes, "Pending note when bookmark is removed");
-    assertions += 1;
+    assert.equal(fixture.storage.metadataByUrl["https://example.test/temp-details-updated"].notes, "Pending note when bookmark is removed");
+    assertions += 4;
     await page.locator(".ba-search").fill("autokeywordforsearch");
     await waitRows(1);
     await page.locator(".ba-search").fill("");
@@ -352,6 +366,15 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
         await page.locator(".ba-menu button", { hasText: /^Properties$/ }).click();
         assert.equal(await page.locator(".ba-detail").isVisible(), true);
         assert.equal(await page.locator(".ba-detail-scrim").isVisible(), true);
+        assert.equal(await page.locator(".ba-library-panel").evaluate((node) => node.inert), true);
+        assert.equal(await page.locator(".ba-list-panel").evaluate((node) => node.inert), true);
+        assert.equal(await page.locator(".ba-detail").getAttribute("aria-modal"), "true");
+        for (const key of ["Tab", "Shift+Tab"]) {
+          for (let count = 0; count < 12; count += 1) {
+            await page.keyboard.press(key);
+            assert.equal(await page.evaluate(() => document.querySelector(".ba-detail").contains(document.activeElement)), true);
+          }
+        }
         const drawerGeometry = await page.locator(".ba-detail").evaluate((node) => {
           const panel = node.getBoundingClientRect();
           const win = node.closest(".ba-window").getBoundingClientRect();
@@ -367,7 +390,8 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
         await page.locator(".ba-detail-scrim").click({ position: { x: 2, y: 2 } });
         await page.locator(".ba-detail").waitFor({ state: "hidden" });
         assert.equal(fixture.storage.metadataByUrl[fixture.find(id).url].notes, `Drawer note ${viewport.width}`);
-        assertions += 5;
+        assert.equal(await page.locator(`[data-bookmark-id="${id}"] .ba-icon-btn`).evaluate((node) => node === document.activeElement), true);
+        assertions += 33;
       }
     }
 
