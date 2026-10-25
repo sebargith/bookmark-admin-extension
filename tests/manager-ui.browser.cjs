@@ -134,9 +134,11 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     assert.equal(await page.locator('[data-folder-id="nav-0"] .ba-disclosure').getAttribute("aria-expanded"), "true");
     assert.equal(fixture.storage.managerNavigation.selectedByView.library, "102");
     assert.equal(fixture.storage.managerNavigation.selectedByView.windows, "110");
+    await page.locator('.ba-breadcrumbs [aria-current="location"]').focus();
     leaf.title = "Renamed externally, same folder";
     await page.evaluate(() => globalThis.__bookmarkChange());
     await page.locator('.ba-breadcrumbs [aria-current="location"]').filter({ hasText: /^Renamed externally/ }).waitFor();
+    assert.equal(await page.locator('.ba-breadcrumbs [aria-current="location"]').evaluate((node) => node === document.activeElement), true);
     assert.equal(fixture.storage.managerNavigation.selectedByView.all, "nav-8");
     await navigate(() => page.getByRole("button", { name: "Collapse all folders", exact: true }).click());
     assert.equal(await page.locator(".ba-folder-line").count(), 5);
@@ -144,10 +146,12 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await navigate(() => page.locator(".ba-breadcrumbs button").filter({ hasText: /^Archive$/ }).click());
     assert.equal(await page.locator(".ba-list-title").innerText(), "Archive");
     assert.equal(await page.locator('.ba-breadcrumbs [aria-current="location"]').evaluate((node) => node === document.activeElement), true);
+    await page.locator('[data-folder-id="nav-0"] .ba-name').focus();
     fixture.find("111").children = fixture.find("111").children.filter((node) => node.id !== "nav-0");
     await page.evaluate(() => globalThis.__bookmarkChange());
     await waitRows(10);
     assert.equal(await page.locator(".ba-list-title").innerText(), "All Bookmarks");
+    assert.equal(await page.locator('[data-folder-id="111"] .ba-name').evaluate((node) => node === document.activeElement), true);
     assert.equal(fixture.storage.managerNavigation.expanded.some((id) => id.startsWith("nav-")), false);
     assert.deepEqual(fixture.storage.settings, quickSaveSettings);
     await navigate(() => view("Library"));
@@ -159,7 +163,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await navigate(() => page.getByRole("button", { name: /^All saved windows/ }).click());
     await navigate(() => view("Library"));
     await waitRows(2);
-    assertions += 23;
+    assertions += 25;
     fixture.storage.managerNavigation = { view: "windows", selectedByView: { library: "200", windows: "130", all: "missing" }, expanded: ["200", "missing", "1"] };
     await page.reload();
     await waitRows(3);
@@ -177,6 +181,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await page.waitForFunction(() => document.querySelector(".ba-list-title").textContent === "Library");
     await waitRows(1);
     assert.equal(fixture.storage.managerNavigation.selectedByView.library, null);
+    assert.equal(await page.locator(".ba-overview").evaluate((node) => node === document.activeElement), true);
     await navigate(() => view("All Bookmarks"));
     await navigate(() => page.getByRole("button", { name: "Expand all folders", exact: true }).click());
     await navigate(() => page.locator('[data-folder-id="102"] .ba-name').click());
@@ -192,7 +197,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await navigate(() => view("Library"));
     await navigate(() => page.getByRole("button", { name: "Collapse all folders", exact: true }).click());
     await waitRows(2);
-    assertions += 7;
+    assertions += 8;
     assert.equal(await page.locator(".ba-detail").isVisible(), false);
     const fullListWidth = (await page.locator(".ba-bookmark-list").boundingBox()).width;
     const before = copy(fixture.root);
@@ -461,6 +466,12 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
       });
       assert.deepEqual(layout, { inViewport: true, rowOverlap: false, horizontalOverflow: false, uniformRows: true, assetsLoaded: true });
       assertions += 5;
+      if (viewport.width === 390) {
+        const treeHeight = (await page.locator(".ba-folder-tree").boundingBox()).height;
+        const folderHeight = (await page.locator(".ba-folder-line").first().boundingBox()).height;
+        assert.ok(treeHeight >= folderHeight * 2, `Tree ${treeHeight}px must fit two folder rows of ${folderHeight}px`);
+        assertions += 1;
+      }
       if (viewport.resize || viewport.width === 390) {
         const priorWidth = (await page.locator(".ba-bookmark-list").boundingBox()).width;
         const firstRow = page.locator(".ba-bookmark-list .ba-bookmark-row").first();

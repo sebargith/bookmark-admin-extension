@@ -277,6 +277,7 @@
     const data = await send("getManagerState");
     if (sequence !== state.loadSequence || !root.isConnected) return;
     if (notesRevision !== state.notesRevision) return load(status);
+    const navigationFocus = captureNavigationFocus();
     const oldPath = state.data ? folderTrail(state.selectedFolderId).map((node) => node.id).join("/") : null;
     state.data = data;
     if (!state.navigationLoaded) {
@@ -303,19 +304,46 @@
       state.detailBookmark = currentDetail || null;
       state.detailRenderKey = null;
     }
-    render();
+    render(navigationFocus);
     if (revealLocation) els.tree.querySelector(".ba-selected")?.scrollIntoView({ block: "nearest" });
     if (status) setStatus(status);
     else if (urlChanged) setStatus("Bookmark URL changed. Details refreshed.");
   }
 
-  function render() {
+  function render(navigationFocus = captureNavigationFocus()) {
     if (!state.data) return;
     renderNavigation();
     renderTree();
     renderBreadcrumbs();
     renderBookmarks();
     renderDetail();
+    restoreNavigationFocus(navigationFocus);
+  }
+
+  function captureNavigationFocus() {
+    const active = shadow?.activeElement || document.activeElement;
+    const breadcrumb = active?.closest(".ba-breadcrumbs button");
+    const folder = active?.closest(".ba-folder-line");
+    if (!breadcrumb && !folder) return null;
+    const id = breadcrumb ? breadcrumb.dataset.locationId || null : folder.dataset.folderId;
+    return {
+      kind: breadcrumb ? "breadcrumb" : "tree",
+      candidates: [...folderTrail(id).map((node) => node.id).reverse(), null],
+      control: active.matches(".ba-disclosure") ? ".ba-disclosure" :
+        (active.matches(".ba-name") ? ".ba-name" : ".ba-icon-btn")
+    };
+  }
+
+  function restoreNavigationFocus(memory) {
+    if (!memory) return;
+    for (const id of memory.candidates) {
+      const selector = memory.kind === "breadcrumb" ?
+        `[data-location-id="${CSS.escape(id || "")}"]` :
+        `[data-folder-id="${CSS.escape(id || "")}"] ${memory.control}`;
+      const target = (memory.kind === "breadcrumb" ? els.breadcrumbs : els.tree).querySelector(selector);
+      if (target && !target.disabled) { target.focus({ preventScroll: true }); return; }
+    }
+    els.overview.focus({ preventScroll: true });
   }
 
   async function selectView(view) {
@@ -394,6 +422,7 @@
     for (const [index, part] of parts.entries()) {
       const button = document.createElement("button");
       button.type = "button";
+      button.dataset.locationId = part.id || "";
       button.textContent = part.title;
       button.title = part.title;
       if (index === parts.length - 1) button.setAttribute("aria-current", "location");
