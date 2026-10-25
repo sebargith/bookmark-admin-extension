@@ -152,3 +152,45 @@ screenshots. Additional probes passed live column-to-drawer-to-column transition
 and confirmed that Ctrl/Alt/Meta+Tab events were not prevented.
 
 The shared evidence limits above apply.
+
+## Phase 4: Folder hierarchy and navigation memory
+
+Implementation commits: `28206ed` (independent local navigation storage),
+`7178256` (hierarchy, breadcrumbs, controls and restoration), and `5b18e8f`
+(separate fixed scope control from the scrolling ancestor trail).
+
+The independent evaluator reviewed `5b18e8f`, reran 29 unit tests and 192 browser
+assertions without page errors, and inspected desktop, mobile and deep-hierarchy
+screenshots. A separate two-instance probe confirmed that closing an older
+manager does not issue a navigation write or overwrite the newer location.
+Quick-save settings remained unchanged. No personal browser profile was used.
+
+Initial scores: functionality 8/10, visuals 8/10, usability 7/10; arithmetic
+overall 7.67/10. This exceeded the acceptance threshold. The evaluator found
+incomplete focus recovery for externally refreshed breadcrumbs/deleted folders,
+and a narrow tree viewport that showed only one complete folder row.
+
+An optional revision (`a1c8ac7`) captures focused navigation IDs and their original
+ancestor chain before replacing data. Rendering restores the same control, a
+surviving ancestor, or the overview. Stacked layouts reserve a larger tree track
+and scroll the layout on short windows. Regression checks cover both focus
+fallbacks and two visible folder rows at 390x844. All 29 unit tests and 196 browser
+assertions pass without page errors.
+
+| Category | Score |
+| --- | ---: |
+| Functionality | 9/10 |
+| Visuals | 8/10 |
+| Usability | 8/10 |
+| Arithmetic Overall | 8.33/10 |
+
+Outcome: accepted after one optional revision, with no second revision required.
+The evaluator independently reran all 29 unit tests and 196 browser assertions,
+inspected revised deep/mobile/detail screenshots, and confirmed both findings
+resolved without new actionable findings. A 390x600 probe verified scrolling
+access to the bookmark list and details controls. The two-instance test passed
+again, with no additional navigation write when closing the older manager.
+
+The shared evidence limits above apply: these are synthetic Chrome API checks
+with real browser rendering, not verification as an installed extension or a
+security certification.

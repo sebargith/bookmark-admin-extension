@@ -62,10 +62,32 @@ tests and 154 browser assertions, inspected desktop/drawer/error screenshots,
 and checked live column/drawer transitions and browser shortcut preservation.
 See [EVALUATION.md](EVALUATION.md) for findings and verification limits.
 
-## 4. Folder hierarchy and navigation memory (planned)
+## 4. Folder hierarchy and navigation memory (complete)
 
-Improve indentation, folder accents, breadcrumbs, expansion controls, and
-remembered location and expanded folders.
+Implemented bounded indentation with branch guides, distinct top-level folder
+surfaces, independent disclosure buttons, and expand/collapse-all controls.
+Empty folders have no active disclosure arrow. Clickable breadcrumbs keep the
+view button outside a separately scrolling ancestor trail so paths do not cover
+the overview control. Keyboard focus follows surviving breadcrumb/folder IDs or
+falls back to a parent or overview after external changes. Narrow layouts reserve
+enough tree space for at least two folder rows at the tested 390x844 viewport.
+
+The manager restores its last view, per-view selected native folder IDs, and
+expanded folder IDs from local extension storage, without changing popup save
+settings. Restoring reveals the selected folder's ancestors. Renames and moves
+retain identity; deleted or out-of-scope locations fall back to their view's
+overview. External refreshes do not reapply older navigation snapshots. Closing
+an older manager waits for its writes rather than overwriting another manager's
+newer location. Search, filters, and open details remain session-only.
+
+Verification: 29 unit tests and 196 browser assertions pass using synthetic
+bookmarks, including deep paths, navigation after reopening, corrupt/stale IDs,
+focus, external rename/move/delete, and unchanged popup settings. Accepted at
+8.33/10 after one optional revision following an initial 7.67/10 review. The
+evaluator confirmed both focus and narrow-height findings resolved, checked a
+390x600 scrolling layout, and verified independent manager instances do not
+overwrite newer navigation on close. No second revision was needed. See
+[EVALUATION.md](EVALUATION.md) for evidence and verification limits.
 
 ## 5. Saved-window workflows (planned)
 

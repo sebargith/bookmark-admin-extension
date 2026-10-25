@@ -65,6 +65,8 @@ Phase-two compact-list evaluation: 8.3/10 on its first review, with 23 passing u
 
 Phase-three on-demand details evaluation: 8.3/10 after one revision, with 26 passing unit tests and 154 passing browser assertions using synthetic data.
 
+Phase-four hierarchy and navigation-memory evaluation: 8.33/10 after one optional revision, with 29 passing unit tests and 196 passing browser assertions using synthetic data. Focus recovery, short-window scrolling, and independent manager instances were also reviewed.
+
 Exports started from the floating manager open a dedicated extension-owned tab. The download is created there, so its contents and download link are not inserted into the underlying website. No additional permissions are required.
 
 `Save all windows` creates one folder per non-incognito window directly on the bookmarks bar, named `nuevo1`, `nuevo2`, and so on. It continues after the highest existing numbered folder on that bar (including names such as `nuevo 6`), preserves tab order and repeated URLs, and leaves the windows open. If Chrome exposes both account and local bookmarks bars, it uses the bar with the highest existing `nuevo` number, preferring the account bar when tied. These folders appear in the manager's Saved Windows and All Bookmarks views. The action makes no page-indexing requests. Unsupported or unavailable tab URLs are skipped and failures are reported in the popup. Closing the popup does not cancel a capture already started in the background.
