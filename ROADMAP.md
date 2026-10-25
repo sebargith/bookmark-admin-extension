@@ -3,7 +3,7 @@
 The extension uses Chrome's native bookmarks as its source of truth. Views must
 not duplicate or relocate bookmarks simply to organize the interface.
 
-## 1. Navigation and bookmark coverage (implemented; independent evaluation pending)
+## 1. Navigation and bookmark coverage (complete)
 
 - Library: the existing Bookmark Admin folder and its descendants.
 - Saved Windows: numbered nuevoX folders directly on Chrome's bookmarks bars.
@@ -20,6 +20,10 @@ not duplicate or relocate bookmarks simply to organize the interface.
 Acceptance: existing nuevo folders appear under Saved Windows, newly captured
 windows appear without reopening the manager, and All Bookmarks finds items in
 Other Bookmarks. View switching does not change Chrome's bookmark structure.
+
+Accepted at 7.3/10 after one independent evaluation revision. See
+[EVALUATION.md](EVALUATION.md) for category scores, fixes, test evidence, and the
+limits of verification.
 
 ## 2. Compact, readable lists (planned)
 
