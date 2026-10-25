@@ -1,8 +1,9 @@
-# Navigation Evaluation
+# Bookmark Admin Evaluations
 
-Scope: roadmap phase 1, introducing Library, Saved Windows, and All Bookmarks over
-Chrome's native bookmark tree. A separate read-only evaluator reviewed the code,
-reran tests with synthetic data, and inspected browser screenshots.
+Scope: roadmap phases 1 and 2. Phase 1 introduces Library, Saved Windows, and All
+Bookmarks over Chrome's native bookmark tree. Phase 2 makes bookmark lists compact
+and readable. Separate read-only evaluators reviewed the changes, reran tests
+with synthetic data, and inspected browser screenshots.
 
 The threshold is an overall score of at least 7/10, calculated as the arithmetic
 mean of functionality, visuals, and usability, rounded to one decimal. Up to two
@@ -76,3 +77,31 @@ plus the floating overlay. Test source is in `tests/manager-ui.browser.cjs`.
 Installation as a loaded extension, actual extension CSP/resource loading, and
 native Chrome API integration have not been verified in this environment. The
 score is an engineering review, not a security certification.
+
+## Phase 2: Compact lists
+
+Reviewed commit: `04e5629`.
+
+| Category | Score |
+| --- | ---: |
+| Functionality | 9/10 |
+| Visuals | 8/10 |
+| Usability | 8/10 |
+| Overall | 8.3/10 |
+
+Outcome: accepted on the first evaluation, without revision. The evaluator found
+no blocking new regression. Phase 3's sidebar redesign was outside this review.
+
+The evaluator independently reran 23 unit tests and 61 browser assertions without
+reported browser errors and inspected seven screenshots. Checks include fixed
+40px main rows and 32px inline tree rows, narrow dates, full title/URL hover text,
+untitled labels, retained metadata in details/search, long-title truncation,
+desktop/narrow layouts, and resizing the manager with its native resize handle.
+
+Non-blocking follow-up: warning and dead-link indicators currently share a glyph
+and differ in background color. Hover text and accessible labels distinguish
+them; distinct shapes would make them easier to scan without relying on color.
+This is recorded under roadmap phase 9.
+
+The evidence limits above also apply to phase 2: real Chrome rendering used
+synthetic APIs; loaded-extension and native Chrome API integration remain unverified.

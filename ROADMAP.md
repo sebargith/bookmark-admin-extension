@@ -25,7 +25,7 @@ Accepted at 7.3/10 after one independent evaluation revision. See
 [EVALUATION.md](EVALUATION.md) for category scores, fixes, test evidence, and the
 limits of verification.
 
-## 2. Compact, readable lists (implemented; independent evaluation pending)
+## 2. Compact, readable lists (complete)
 
 Consistent row heights, wider titles, hidden URLs with hover/details access,
 compact dates, and fewer visible badges. Verify long titles and resized windows.
@@ -35,6 +35,11 @@ option controls, full title/URL and folder-path hover text, and a compact
 indicator for warning/dead links only. Notes, use counts, and generated keywords
 remain available in the detail panel and search, without enlarging list rows.
 Untitled bookmarks use a readable label instead of showing a raw URL.
+
+Accepted at 8.3/10 on the first independent evaluation, with no revision required.
+Verification includes 23 unit tests and 61 browser assertions with synthetic data,
+long titles, metadata-heavy rows, and an actual window-resize gesture. See
+[EVALUATION.md](EVALUATION.md) for the evidence and remaining limitations.
 
 ## 3. Details on demand (planned)
 
@@ -69,11 +74,12 @@ action feedback, and discoverable undo.
 ## 9. Visual refinement and accessibility (planned)
 
 Refine dark surfaces, restrained accents, focus states, contrast, keyboard access,
-motion preferences, and layouts across window sizes.
+motion preferences, and layouts across window sizes. Give warning and dead-link
+indicators distinct shapes as well as colors.
 
 ## Evaluation for this delivery
 
-An independent evaluator reviews phase 1 for functionality, visuals, and usability,
+An independent evaluator reviews evaluated steps for functionality, visuals, and usability,
 each scored from 1 to 10, with an overall score. Use synthetic bookmarks rather
 than personal browser data. Clearly distinguish browser observations, automated
 tests, and static review. If the overall score is below 7, perform a revision and
