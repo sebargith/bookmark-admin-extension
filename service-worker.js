@@ -13,6 +13,7 @@ const STORAGE_KEYS = {
 let suppressEventsUntil = 0;
 let saveAllWindowsPromise = null;
 let bookmarkRefreshTimer = null;
+let metadataWriteQueue = Promise.resolve();
 
 const STOP_WORDS = new Set([
   "about", "after", "again", "against", "also", "because", "before", "being",
@@ -287,6 +288,22 @@ async function getMetadataMap() {
 
 async function saveMetadataMap(metadata) {
   await storageSet({ [STORAGE_KEYS.METADATA]: metadata });
+}
+
+function serializeMetadataWrite(work) {
+  const result = metadataWriteQueue.then(work);
+  metadataWriteQueue = result.catch(() => {});
+  return result;
+}
+
+function mergeMetadataPatches(patches) {
+  return serializeMetadataWrite(async () => {
+    const latest = await getMetadataMap();
+    for (const [url, patch] of Object.entries(patches)) {
+      latest[url] = { ...(latest[url] || {}), ...patch };
+    }
+    await saveMetadataMap(latest);
+  });
 }
 
 async function getNode(id) {
@@ -704,7 +721,11 @@ async function rememberLastSavedFolder(folder) {
   });
 }
 
-async function updateMetadataForUrl(normalizedUrl, patch) {
+function updateMetadataForUrl(normalizedUrl, patch) {
+  return serializeMetadataWrite(() => applyMetadataPatch(normalizedUrl, patch));
+}
+
+async function applyMetadataPatch(normalizedUrl, patch) {
   const metadataByUrl = await getMetadataMap();
   const previous = metadataByUrl[normalizedUrl] || {};
   const next = {
@@ -1228,19 +1249,18 @@ async function refreshIndex(payload = {}) {
     }
   }
 
-  const metadataByUrl = await getMetadataMap();
+  const patches = {};
   let indexed = 0;
   for (const bookmark of unique.values()) {
     const pageIndex = await buildPageIndex(bookmark.url, bookmark.title);
-    metadataByUrl[bookmark.normalizedUrl] = {
-      ...(metadataByUrl[bookmark.normalizedUrl] || {}),
+    patches[bookmark.normalizedUrl] = {
       ...pageIndex,
       updatedAt: stamp()
     };
     indexed += 1;
   }
 
-  await saveMetadataMap(metadataByUrl);
+  await mergeMetadataPatches(patches);
   return { indexed };
 }
 
@@ -1347,7 +1367,7 @@ async function checkLinks(payload = {}) {
     unique.get(bookmark.normalizedUrl).bookmarks.push(bookmark);
   }
 
-  const metadataByUrl = await getMetadataMap();
+  const patches = {};
   const entries = Array.from(unique.entries());
   const results = [];
   let cursor = 0;
@@ -1359,8 +1379,7 @@ async function checkLinks(payload = {}) {
       cursor += 1;
       const [normalizedUrl, entry] = entries[index];
       const deadStatus = await checkUrl(entry.url);
-      metadataByUrl[normalizedUrl] = {
-        ...(metadataByUrl[normalizedUrl] || {}),
+      patches[normalizedUrl] = {
         deadStatus,
         updatedAt: stamp()
       };
@@ -1378,7 +1397,7 @@ async function checkLinks(payload = {}) {
   }
 
   await Promise.all(Array.from({ length: concurrency }, worker));
-  await saveMetadataMap(metadataByUrl);
+  await mergeMetadataPatches(patches);
 
   return {
     checked: results.length,
