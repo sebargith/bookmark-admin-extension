@@ -32,6 +32,7 @@
     noteDrafts: new Map(),
     noteVersion: 0,
     noteFlushPromise: null,
+    notesRevision: 0,
     detailBookmark: null,
     detailMode: "notes",
     detailRenderKey: null,
@@ -254,8 +255,10 @@
 
   async function load(status) {
     const sequence = ++state.loadSequence;
+    const notesRevision = state.notesRevision;
     const data = await send("getManagerState");
     if (sequence !== state.loadSequence || !root.isConnected) return;
+    if (notesRevision !== state.notesRevision) return load(status);
     state.data = data;
     if (state.selectedFolderId && !folderInView(state.selectedFolderId)) state.selectedFolderId = null;
     if (state.detailBookmark && !findFlatBookmark(state.detailBookmark.id)) {
@@ -919,6 +922,7 @@
           updateNoteStatus();
           throw error;
         }
+        state.notesRevision += 1;
         // A newer edit must survive an older request finishing.
         if (state.noteDrafts.get(key)?.version === draft.version) state.noteDrafts.delete(key);
         for (const bookmark of state.data.bookmarks) {

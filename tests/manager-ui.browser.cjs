@@ -26,9 +26,12 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
   const errors = [];
   let rejectNotes = false;
   let holdNotes = null;
+  let holdManagerRead = null;
+  let managerReads = 0;
   let assertions = 0;
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true, reducedMotion: "reduce" });
+    await context.exposeBinding("__managerReadCount", () => managerReads);
     await context.exposeBinding("__bookmarkRequest", async (source, type, payload) => {
       if (type === "getCurrentTab") return { ok: true, result: { title: "Sample page", url: "https://example.test" } };
       const commands = { getManagerState: "getManagerState", getState: "getManagedState", createFolder: "createFolder",
@@ -41,7 +44,12 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
           const gate = holdNotes;
           if (gate) await gate;
         }
-        return { ok: true, result: copy(await fixture.context[commands[type]](payload)) };
+        const result = copy(await fixture.context[commands[type]](payload));
+        if (type === "getManagerState") {
+          managerReads += 1;
+          if (holdManagerRead) await holdManagerRead;
+        }
+        return { ok: true, result };
       }
       catch (error) { return { ok: false, error: error.message }; }
     });
@@ -52,7 +60,10 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
           getURL: (asset) => new URL(asset, baseUrl).href,
           sendMessage: (message, reply) => {
             if (message.type === "updateMetadata") globalThis.__noteRequestCount = (globalThis.__noteRequestCount || 0) + 1;
-            return globalThis.__bookmarkRequest(message.type, message.payload).then(reply);
+            return globalThis.__bookmarkRequest(message.type, message.payload).then((response) => {
+              reply(response);
+              if (message.type === "getManagerState") globalThis.__managerReplies = (globalThis.__managerReplies || 0) + 1;
+            });
           }
         },
         storage: { onChanged: {
@@ -112,6 +123,25 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await page.getByRole("button", { name: "Close details", exact: true }).click();
     await page.locator(".ba-detail").waitFor({ state: "hidden" });
     assert.equal(fixture.storage.metadataByUrl["https://example.test/200"].notes, "Saved on immediate panel close");
+    await openNotes("Library saved page");
+    let releaseRead;
+    holdManagerRead = new Promise((resolve) => { releaseRead = resolve; });
+    const readsBefore = managerReads;
+    const repliesBefore = await page.evaluate(() => globalThis.__managerReplies);
+    await page.evaluate(() => globalThis.__bookmarkChange());
+    await page.waitForFunction(async (previous) => await globalThis.__managerReadCount() > previous, readsBefore);
+    assert.ok(managerReads > readsBefore);
+    await page.locator(".ba-detail textarea").fill("Saved after an older read began");
+    await page.getByRole("button", { name: "Close details", exact: true }).click();
+    await page.locator(".ba-detail").waitFor({ state: "hidden" });
+    holdManagerRead = null;
+    releaseRead();
+    await page.waitForFunction((previous) => globalThis.__managerReplies >= previous + 2, repliesBefore);
+    await openNotes("Library saved page");
+    assert.equal(await page.locator(".ba-detail textarea").inputValue(), "Saved after an older read began");
+    await page.getByRole("button", { name: "Close details", exact: true }).click();
+    await page.locator(".ba-detail").waitFor({ state: "hidden" });
+    assertions += 2;
     await openNotes("Library saved page");
     await page.locator(".ba-detail textarea").fill("First bookmark draft");
     await openNotes("Library research page");
