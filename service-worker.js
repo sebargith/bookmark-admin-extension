@@ -12,6 +12,7 @@ const STORAGE_KEYS = {
 
 let suppressEventsUntil = 0;
 let saveAllWindowsPromise = null;
+let bookmarkRefreshTimer = null;
 
 const STOP_WORDS = new Set([
   "about", "after", "again", "against", "also", "because", "before", "being",
@@ -520,6 +521,73 @@ async function getManagedState() {
   };
 }
 
+async function getBookmarkContext() {
+  const area = await ensureManagedArea();
+  const tree = await chromeCall(chrome.bookmarks.getTree.bind(chrome.bookmarks));
+  const root = tree[0];
+  return { area, root, nodeMap: buildNodeMap(root) };
+}
+
+function isReadOnlyNode(node, nodeMap) {
+  let current = node;
+  while (current) {
+    if (current.unmodifiable) return true;
+    current = nodeMap.get(current.parentId);
+  }
+  return false;
+}
+
+function isProtectedNode(node, context) {
+  return node.id === context.root.id || node.parentId === context.root.id ||
+    Boolean(node.folderType) || node.id === context.area.managedRoot.id ||
+    node.id === context.area.defaultFolder.id;
+}
+
+function writableFolder(id, context) {
+  const node = context.nodeMap.get(id);
+  if (!isFolder(node) || node.id === context.root.id || isReadOnlyNode(node, context.nodeMap)) {
+    throw new Error("The destination folder is missing or read-only.");
+  }
+  return node;
+}
+
+function canModifyNode(node, context) {
+  return node && !isProtectedNode(node, context) && !isReadOnlyNode(node, context.nodeMap);
+}
+
+async function getManagerState() {
+  const context = await getBookmarkContext();
+  const metadataByUrl = await getMetadataMap();
+  const auxiliary = await storageGet({
+    [STORAGE_KEYS.UNDO]: null,
+    [STORAGE_KEYS.REVISION]: 0
+  });
+  const savedWindowFolderIds = [];
+  for (const bar of context.root.children || []) {
+    if (bar.folderType !== "bookmarks-bar" && !(bar.id === "1" && !bar.folderType)) continue;
+    for (const node of bar.children || []) {
+      if (isFolder(node) && /^nuevo\s*\d+$/i.test(safeTitle(node.title))) {
+        savedWindowFolderIds.push(node.id);
+      }
+    }
+  }
+  return {
+    root: context.root,
+    managedRoot: context.area.managedRoot,
+    defaultFolder: context.area.defaultFolder,
+    settings: context.area.settings,
+    metadataByUrl,
+    ...flattenManagedData(context.root, metadataByUrl),
+    savedWindowFolderIds,
+    protectedNodeIds: [...context.nodeMap.values()]
+      .filter((node) => isProtectedNode(node, context)).map((node) => node.id),
+    readOnlyNodeIds: [...context.nodeMap.values()]
+      .filter((node) => isReadOnlyNode(node, context.nodeMap)).map((node) => node.id),
+    lastUndo: auxiliary[STORAGE_KEYS.UNDO],
+    bookmarkRevision: auxiliary[STORAGE_KEYS.REVISION]
+  };
+}
+
 function findBookmarksByUrl(root, normalizedUrl) {
   const matches = [];
   walk(root, (node) => {
@@ -779,14 +847,8 @@ async function createFolder(payload = {}) {
   const title = safeTitle(payload.title);
   if (!title) throw new Error("Folder title is required.");
 
-  const area = await ensureManagedArea();
-  let parent = area.managedRoot;
-  if (payload.parentId) {
-    parent = await getValidFolderOrDefault(payload.parentId, area);
-    if (parent.id === area.defaultFolder.id && payload.parentId !== area.defaultFolder.id) {
-      parent = area.managedRoot;
-    }
-  }
+  const context = await getBookmarkContext();
+  const parent = writableFolder(payload.parentId || context.area.managedRoot.id, context);
 
   const parentTree = await getSubTree(parent.id);
   const existing = (parentTree.children || []).find((node) => !node.url && node.title === title);
@@ -826,13 +888,11 @@ async function setUndoSnapshot(snapshot) {
 }
 
 async function bulkDelete(payload = {}) {
-  const area = await ensureManagedArea();
-  const root = await getSubTree(area.managedRoot.id);
-  const nodeMap = buildNodeMap(root);
+  const context = await getBookmarkContext();
+  const { nodeMap } = context;
   const rawIds = Array.from(new Set(payload.ids || []));
   const ids = filterTopLevelSelection(rawIds, nodeMap)
-    .filter((id) => id !== area.managedRoot.id && id !== area.defaultFolder.id)
-    .filter((id) => nodeMap.has(id));
+    .filter((id) => canModifyNode(nodeMap.get(id), context));
 
   if (!ids.length) throw new Error("No removable bookmarks or folders were selected.");
 
@@ -846,40 +906,34 @@ async function bulkDelete(payload = {}) {
     });
   }
 
-  await setUndoSnapshot({
-    action: "delete",
-    label: `Deleted ${ids.length} item${ids.length === 1 ? "" : "s"}`,
-    snapshots
-  });
-
+  const deletedSnapshots = [];
   await withInternalMutation(async () => {
-    for (const id of ids) {
-      const node = nodeMap.get(id);
-      if (!node) continue;
+    for (const snapshot of snapshots) {
+      const node = snapshot.node;
       try {
         if (node.url) {
-          await chromeCall(chrome.bookmarks.remove.bind(chrome.bookmarks), id);
+          await chromeCall(chrome.bookmarks.remove.bind(chrome.bookmarks), node.id);
         } else {
-          await chromeCall(chrome.bookmarks.removeTree.bind(chrome.bookmarks), id);
+          await chromeCall(chrome.bookmarks.removeTree.bind(chrome.bookmarks), node.id);
         }
+        deletedSnapshots.push(snapshot);
       } catch {
-        // The node may already be gone if its parent folder was removed.
+        // Only successful removals belong in undo, or restoring could duplicate data.
       }
     }
   });
-
-  return { deleted: ids.length };
+  if (!deletedSnapshots.length) throw new Error("Chrome could not delete the selected items.");
+  await setUndoSnapshot({ action: "delete", label: `Deleted ${deletedSnapshots.length} items`, snapshots: deletedSnapshots });
+  return { deleted: deletedSnapshots.length, failed: ids.length - deletedSnapshots.length };
 }
 
 async function bulkMove(payload = {}) {
-  const area = await ensureManagedArea();
-  const root = await getSubTree(area.managedRoot.id);
-  const nodeMap = buildNodeMap(root);
-  const targetFolder = await getValidFolderOrDefault(payload.folderId, area);
+  const context = await getBookmarkContext();
+  const { nodeMap } = context;
+  const targetFolder = writableFolder(payload.folderId, context);
   const rawIds = Array.from(new Set(payload.ids || []));
   const ids = filterTopLevelSelection(rawIds, nodeMap)
-    .filter((id) => id !== area.managedRoot.id && id !== area.defaultFolder.id)
-    .filter((id) => nodeMap.has(id));
+    .filter((id) => canModifyNode(nodeMap.get(id), context));
 
   if (!ids.length) throw new Error("No movable bookmarks or folders were selected.");
 
@@ -925,14 +979,13 @@ async function renameNode(payload = {}) {
   const title = safeTitle(payload.title);
   if (!title) throw new Error("New title is required.");
 
-  const area = await ensureManagedArea();
-  const root = await getSubTree(area.managedRoot.id);
-  const nodeMap = buildNodeMap(root);
+  const context = await getBookmarkContext();
+  const { nodeMap } = context;
   const node = nodeMap.get(payload.id);
 
   if (!node) throw new Error("Bookmark or folder was not found.");
-  if (node.id === area.managedRoot.id || node.id === area.defaultFolder.id) {
-    throw new Error("The managed root and All folder cannot be renamed.");
+  if (!canModifyNode(node, context)) {
+    throw new Error("This folder or bookmark is protected or read-only.");
   }
 
   await setUndoSnapshot({
@@ -953,12 +1006,10 @@ async function renameNode(payload = {}) {
 }
 
 async function bulkRename(payload = {}) {
-  const area = await ensureManagedArea();
-  const root = await getSubTree(area.managedRoot.id);
-  const nodeMap = buildNodeMap(root);
+  const context = await getBookmarkContext();
+  const { nodeMap } = context;
   const ids = Array.from(new Set(payload.ids || []))
-    .filter((id) => id !== area.managedRoot.id && id !== area.defaultFolder.id)
-    .filter((id) => nodeMap.has(id));
+    .filter((id) => canModifyNode(nodeMap.get(id), context));
 
   if (!ids.length) throw new Error("No renameable bookmarks or folders were selected.");
 
@@ -1010,8 +1061,8 @@ async function bulkRename(payload = {}) {
 }
 
 async function sortFolder(payload = {}) {
-  const area = await ensureManagedArea();
-  const folder = await getValidFolderOrDefault(payload.folderId || area.managedRoot.id, area);
+  const context = await getBookmarkContext();
+  const folder = writableFolder(payload.folderId || context.area.managedRoot.id, context);
   const folderTree = await getSubTree(folder.id);
   const children = folderTree.children || [];
   const metadataByUrl = await getMetadataMap();
@@ -1076,7 +1127,8 @@ async function updateMetadata(payload = {}) {
 }
 
 async function refreshIndex(payload = {}) {
-  const state = await getManagedState();
+  if (Array.isArray(payload.ids) && !payload.ids.length) return { indexed: 0 };
+  const state = await getManagerState();
   const selected = new Set(payload.ids || []);
   const bookmarks = state.bookmarks.filter((bookmark) => {
     if (!selected.size) return !bookmark.metadata.indexedAt;
@@ -1189,7 +1241,8 @@ async function checkUrl(url) {
 }
 
 async function checkLinks(payload = {}) {
-  const state = await getManagedState();
+  if (Array.isArray(payload.ids) && !payload.ids.length) return { checked: 0, results: [], ignoredMissing: [] };
+  const state = await getManagerState();
   const nodeMap = buildNodeMap(state.root);
   const selected = new Set(payload.ids || []);
   const bookmarks = state.bookmarks.filter((bookmark) => {
@@ -1338,6 +1391,10 @@ async function undoLast() {
 }
 
 async function recordExternalChange(type, summary) {
+  clearTimeout(bookmarkRefreshTimer);
+  bookmarkRefreshTimer = setTimeout(() => {
+    storageSet({ [STORAGE_KEYS.REVISION]: Date.now() }).catch(console.error);
+  }, 120);
   if (Date.now() < suppressEventsUntil) return;
 
   const data = await storageGet({
@@ -1521,6 +1578,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch (message && message.type) {
       case "getState":
         result = await getManagedState();
+        break;
+      case "getManagerState":
+        result = await getManagerState();
         break;
       case "getCurrentTab":
         result = await getCurrentTab();
