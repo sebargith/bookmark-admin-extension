@@ -8,6 +8,8 @@ Local Bookmark Admin is designed to keep bookmark data local to Chrome.
 - Notes, generated search keywords, link-check status, open counts, and undo metadata are stored in `chrome.storage.local`.
 - Generated search keywords are compact metadata, not full saved page copies.
 - `Save all windows` copies tab titles and URLs into native bookmarks, one numbered bookmarks-bar folder per window. It excludes incognito windows and does not fetch page content or store a separate tab history.
+- The manager reads Chrome's complete bookmark tree to provide Library, Saved Windows, and All Bookmarks views. Navigation does not send bookmark data over the network.
+- The floating manager uses a closed shadow root to prevent direct DOM inspection of its contents by ordinary webpage scripts. The standalone manager runs on the extension's own page.
 
 ## Network Access
 

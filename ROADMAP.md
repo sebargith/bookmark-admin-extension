@@ -3,7 +3,7 @@
 The extension uses Chrome's native bookmarks as its source of truth. Views must
 not duplicate or relocate bookmarks simply to organize the interface.
 
-## 1. Navigation and bookmark coverage (in progress)
+## 1. Navigation and bookmark coverage (implemented; independent evaluation pending)
 
 - Library: the existing Bookmark Admin folder and its descendants.
 - Saved Windows: numbered nuevoX folders directly on Chrome's bookmarks bars.

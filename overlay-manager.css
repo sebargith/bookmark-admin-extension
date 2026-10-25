@@ -4,6 +4,10 @@
   z-index: 2147483647;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #eef4ff;
+  color-scheme: dark;
+  font-size: 13px;
+  line-height: 1.35;
+  pointer-events: auto;
 }
 
 #bookmark-admin-overlay * {
@@ -27,11 +31,11 @@
   top: 34px;
   left: 34px;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   width: min(1380px, calc(100vw - 68px));
   height: min(840px, calc(100vh - 68px));
-  min-width: 880px;
-  min-height: 560px;
+  min-width: min(760px, calc(100vw - 24px));
+  min-height: min(560px, calc(100vh - 24px));
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 24px);
   overflow: hidden;
@@ -191,14 +195,138 @@
 }
 
 .ba-toolbar {
-  display: grid;
-  grid-template-columns: minmax(280px, 1fr) 150px 150px 150px auto auto auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   padding: 12px 16px;
   border-top: 1px solid rgba(148, 163, 184, 0.12);
   border-bottom: 1px solid rgba(148, 163, 184, 0.12);
   background: rgba(2, 6, 23, 0.48);
+}
+
+.ba-toolbar .ba-search {
+  flex: 1 1 220px;
+  width: auto;
+  min-width: 160px;
+}
+
+.ba-toolbar .ba-select {
+  flex: 0 1 135px;
+  width: 135px;
+}
+
+.ba-navigation {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 8px 16px 0;
+  background: #151b24;
+}
+
+.ba-view-tab {
+  display: flex;
+  min-width: 0;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: #aeb9c8;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.ba-view-tab img {
+  width: 18px;
+  height: 18px;
+}
+
+.ba-view-tab:hover {
+  background: #252c37;
+  color: #f8fafc;
+}
+
+.ba-view-tab[aria-selected="true"] {
+  border-bottom-color: #34d399;
+  background: rgba(52, 211, 153, 0.09);
+  color: #aff3d6;
+}
+
+.ba-view-tab[data-view="windows"][aria-selected="true"] {
+  border-bottom-color: #fbbf24;
+  background: rgba(251, 191, 36, 0.09);
+  color: #fce4a1;
+}
+
+.ba-view-tab[data-view="all"][aria-selected="true"] {
+  border-bottom-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.09);
+  color: #b9e8fc;
+}
+
+.ba-nav-count {
+  min-width: 24px;
+  color: #aab6c8;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+#bookmark-admin-overlay button:focus-visible,
+#bookmark-admin-overlay input:focus-visible,
+#bookmark-admin-overlay select:focus-visible,
+#bookmark-admin-overlay textarea:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 2px;
+}
+
+#bookmark-admin-overlay button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+
+.ba-overview {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  margin: 8px 10px 0;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #bac6d6;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ba-overview[aria-pressed="true"] {
+  border-color: #354453;
+  background: #222d37;
+  color: #f1f5f9;
+}
+
+.ba-overview-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ba-tree-empty {
+  padding: 14px 8px;
+  color: #94a3b8;
 }
 
 .ba-input,
@@ -210,7 +338,7 @@
 
 .ba-layout {
   display: grid;
-  grid-template-columns: minmax(430px, 38%) minmax(360px, 1fr) 300px;
+  grid-template-columns: minmax(230px, 29%) minmax(0, 1fr) minmax(180px, 20%);
   gap: 14px;
   min-height: 0;
   padding: 14px;
@@ -244,6 +372,10 @@
   color: #f8fafc;
   font-size: 13px;
   font-weight: 850;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ba-folder-tree,
@@ -364,12 +496,14 @@
 }
 
 .ba-bookmark-list {
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   gap: 4px;
 }
 
 .ba-bookmark-row {
+  flex: 0 0 auto;
   grid-template-columns: auto minmax(0, 1fr) 92px auto;
   min-height: 36px;
   padding: 5px 7px;
@@ -380,6 +514,18 @@
 
 .ba-bookmark-meta {
   min-width: 0;
+}
+
+.ba-bookmark-meta .ba-bookmark-title {
+  display: block;
+  width: 100%;
+}
+
+.ba-bookmark-sub .ba-muted {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ba-bookmark-sub {
@@ -534,20 +680,42 @@
 
 @media (max-width: 820px) {
   .ba-window {
-    inset: 18px;
+    inset: 12px;
     width: auto;
+    height: calc(100vh - 24px);
     min-width: 0;
-  }
-
-  .ba-toolbar {
-    grid-template-columns: 1fr 1fr;
   }
 
   .ba-layout {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(100px, 35%) minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px;
   }
 
   .ba-detail {
     display: none;
   }
+}
+
+@media (max-width: 520px) {
+  .ba-titlebar { padding: 10px 12px; }
+  .ba-navigation { gap: 0; padding: 4px 6px 0; }
+  .ba-view-tab { gap: 4px; padding: 6px 4px; font-size: 12px; }
+  .ba-view-tab img { display: none; }
+  .ba-view-tab > span:not(.ba-nav-count) { min-width: 0; }
+  .ba-nav-count { min-width: 16px; font-size: 11px; }
+  .ba-toolbar { gap: 6px; padding: 8px; }
+  .ba-toolbar .ba-search { flex-basis: 100%; }
+  .ba-toolbar .ba-select { flex: 1 1 90px; width: 90px; padding: 6px; font-size: 12px; }
+  .ba-panel-header { padding: 8px 10px; }
+  .ba-new-folder { min-height: 28px; padding: 0 8px; }
+  .ba-footer { gap: 8px; padding: 6px 10px; }
+  .ba-footer > span:last-child { display: none; }
+  .ba-bookmark-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .ba-bookmark-row .ba-date { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #bookmark-admin-overlay * { animation: none; transition: none; }
 }

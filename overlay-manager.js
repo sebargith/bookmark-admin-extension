@@ -1,7 +1,8 @@
 (function bookmarkAdminOverlay() {
   const ROOT_ID = "bookmark-admin-overlay";
   const DEFAULT_FOLDER_TITLE = "All";
-  const IS_STANDALONE = document.documentElement.dataset.bookmarkAdminMode === "standalone";
+  const VIEW_LABELS = { library: "Library", windows: "Saved Windows", all: "All Bookmarks" };
+  const IS_STANDALONE = window.location.href.split(/[?#]/, 1)[0] === chrome.runtime.getURL("manager.html");
   const assetUrl = (path) => chrome.runtime.getURL(`assets/${path}`);
   const ICONS = {
     app: assetUrl("app-icon/icon32.png"),
@@ -19,6 +20,8 @@
   };
   const state = {
     data: null,
+    view: "library",
+    selectedByView: { library: null, windows: null, all: null },
     selectedFolderId: null,
     expanded: new Set(),
     search: "",
@@ -27,17 +30,31 @@
     issueFilter: "all",
     noteTimer: null,
     detailBookmark: null,
-    dragging: null
+    dragging: null,
+    loadSequence: 0,
+    refreshTimer: null
   };
 
   const existing = document.getElementById(ROOT_ID);
   if (existing) {
+    existing.dispatchEvent(new Event("bookmark-admin-dismiss"));
     existing.remove();
     return;
   }
 
   const root = document.createElement("div");
   root.id = ROOT_ID;
+  const host = IS_STANDALONE ? root : document.createElement("div");
+  host.id = ROOT_ID;
+  const shadow = IS_STANDALONE ? null : host.attachShadow({ mode: "closed" });
+  if (shadow) {
+    host.style.cssText = "all:initial;position:fixed;inset:0;z-index:2147483647;pointer-events:none;visibility:hidden";
+    const stylesheet = document.createElement("link");
+    stylesheet.rel = "stylesheet";
+    stylesheet.href = chrome.runtime.getURL("overlay-manager.css");
+    stylesheet.addEventListener("load", () => { host.style.visibility = "visible"; });
+    shadow.append(stylesheet, root);
+  }
   root.innerHTML = `
     <div class="ba-backdrop" data-close="true"></div>
     <section class="ba-window" role="dialog" aria-label="Bookmark Admin">
@@ -49,22 +66,33 @@
         </div>
         <button class="ba-icon-btn ba-close" type="button" aria-label="Close">x</button>
       </header>
+      <nav class="ba-navigation" role="tablist" aria-label="Bookmark views">
+        <button class="ba-view-tab" id="ba-view-library" role="tab" type="button" data-view="library" aria-selected="true" aria-controls="ba-manager-content">
+          <img src="${ICONS.folderSelected}" alt=""><span>Library</span><span class="ba-nav-count"></span>
+        </button>
+        <button class="ba-view-tab" id="ba-view-windows" role="tab" type="button" data-view="windows" aria-selected="false" aria-controls="ba-manager-content" tabindex="-1">
+          <img src="${ICONS.export}" alt=""><span>Saved Windows</span><span class="ba-nav-count"></span>
+        </button>
+        <button class="ba-view-tab" id="ba-view-all" role="tab" type="button" data-view="all" aria-selected="false" aria-controls="ba-manager-content" tabindex="-1">
+          <img src="${ICONS.bookmark}" alt=""><span>All Bookmarks</span><span class="ba-nav-count"></span>
+        </button>
+      </nav>
       <section class="ba-toolbar">
-        <input class="ba-input ba-search" type="search" placeholder="Search title, folder, tags, or page words">
-        <select class="ba-select ba-date-filter">
+        <input class="ba-input ba-search" type="search" aria-label="Search Library" placeholder="Search Library">
+        <select class="ba-select ba-date-filter" aria-label="Date added">
           <option value="all">Any time</option>
           <option value="today">Added today</option>
           <option value="week">Last 7 days</option>
           <option value="month">Last 30 days</option>
           <option value="year">Last year</option>
         </select>
-        <select class="ba-select ba-sort">
+        <select class="ba-select ba-sort" aria-label="Sort bookmarks">
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
           <option value="title">Title A-Z</option>
           <option value="used">Most used</option>
         </select>
-        <select class="ba-select ba-issue-filter">
+        <select class="ba-select ba-issue-filter" aria-label="Bookmark status">
           <option value="all">All status</option>
           <option value="unchecked">Unchecked</option>
           <option value="issues">Issues only</option>
@@ -74,13 +102,14 @@
         <button class="ba-button ba-blue ba-index" type="button"><img src="${ICONS.index}" alt=""><span>Index</span></button>
         <button class="ba-button ba-export" type="button"><img src="${ICONS.export}" alt=""><span>Export</span></button>
       </section>
-      <section class="ba-layout">
+      <section class="ba-layout" id="ba-manager-content" role="tabpanel" aria-labelledby="ba-view-library">
         <section class="ba-panel">
           <div class="ba-panel-header">
-            <h2>Library</h2>
+            <h2 class="ba-tree-title">Library</h2>
             <button class="ba-button ba-new-folder" type="button"><img src="${ICONS.folderOpen}" alt=""><span>New folder</span></button>
           </div>
-          <ul class="ba-folder-tree"></ul>
+          <button class="ba-overview" type="button" aria-pressed="true"><span class="ba-overview-label">All in Library</span><span class="ba-overview-count"></span></button>
+          <ul class="ba-folder-tree" aria-label="Library folders"></ul>
         </section>
         <section class="ba-panel">
           <div class="ba-panel-header">
@@ -103,7 +132,7 @@
     </section>
     <div class="ba-menu ba-hidden"></div>
   `;
-  document.documentElement.append(root);
+  document.documentElement.append(host);
 
   const els = {
     backdrop: root.querySelector(".ba-backdrop"),
@@ -111,6 +140,12 @@
     titlebar: root.querySelector(".ba-titlebar"),
     close: root.querySelector(".ba-close"),
     current: root.querySelector(".ba-current"),
+    tabs: [...root.querySelectorAll(".ba-view-tab")],
+    layout: root.querySelector(".ba-layout"),
+    treeTitle: root.querySelector(".ba-tree-title"),
+    overview: root.querySelector(".ba-overview"),
+    overviewLabel: root.querySelector(".ba-overview-label"),
+    overviewCount: root.querySelector(".ba-overview-count"),
     search: root.querySelector(".ba-search"),
     dateFilter: root.querySelector(".ba-date-filter"),
     sort: root.querySelector(".ba-sort"),
@@ -132,6 +167,27 @@
   load().catch(showError);
 
   function bindEvents() {
+    els.newFolder.disabled = true;
+    els.check.disabled = true;
+    els.index.disabled = true;
+    els.export.disabled = true;
+    host.addEventListener("bookmark-admin-dismiss", disposeOverlay);
+    for (const tab of els.tabs) {
+      tab.addEventListener("click", () => selectView(tab.dataset.view));
+      tab.addEventListener("keydown", (event) => {
+        const index = els.tabs.indexOf(tab);
+        let next;
+        if (event.key === "ArrowRight") next = (index + 1) % els.tabs.length;
+        if (event.key === "ArrowLeft") next = (index + els.tabs.length - 1) % els.tabs.length;
+        if (event.key === "Home") next = 0;
+        if (event.key === "End") next = els.tabs.length - 1;
+        if (next === undefined) return;
+        event.preventDefault();
+        els.tabs[next].focus();
+        selectView(els.tabs[next].dataset.view);
+      });
+    }
+    els.overview.addEventListener("click", () => selectFolder(null));
     els.backdrop.addEventListener("pointerdown", () => {
       if (!IS_STANDALONE) closeOverlay();
     });
@@ -153,8 +209,8 @@
       state.issueFilter = els.issueFilter.value;
       renderBookmarks();
     });
-    els.check.addEventListener("click", () => checkVisible());
-    els.index.addEventListener("click", () => refreshIndex(visibleBookmarkIds()));
+    els.check.addEventListener("click", () => checkVisible().catch(showError));
+    els.index.addEventListener("click", () => refreshIndex(visibleBookmarkIds()).catch(showError));
     els.export.addEventListener("click", (event) => {
       event.stopPropagation();
       showMenu(event, [
@@ -162,12 +218,13 @@
         { label: "Export HTML", action: exportHtml }
       ]);
     });
-    els.newFolder.addEventListener("click", () => createFolder(state.selectedFolderId));
+    els.newFolder.addEventListener("click", () => createFolder(newFolderParent()).catch(showError));
     root.addEventListener("click", (event) => {
       if (!els.menu.contains(event.target)) hideMenu();
     });
     document.addEventListener("keydown", onKeyDown, true);
     els.titlebar.addEventListener("pointerdown", beginDrag);
+    chrome.storage.onChanged.addListener(onStorageChanged);
   }
 
   function send(type, payload = {}) {
@@ -188,24 +245,108 @@
   }
 
   async function load(status) {
-    state.data = await send("getState");
-    state.selectedFolderId = state.selectedFolderId || state.data.managedRoot.id;
-    state.expanded.add(state.data.managedRoot.id);
-    els.current.textContent = IS_STANDALONE ? "Standalone manager" : "Floating manager";
+    const sequence = ++state.loadSequence;
+    const data = await send("getManagerState");
+    if (sequence !== state.loadSequence || !root.isConnected) return;
+    state.data = data;
+    if (state.selectedFolderId && !folderInView(state.selectedFolderId)) state.selectedFolderId = null;
+    if (state.detailBookmark && !findFlatBookmark(state.detailBookmark.id)) state.detailBookmark = null;
     render();
     if (status) setStatus(status);
   }
 
   function render() {
+    if (!state.data) return;
+    renderNavigation();
     renderTree();
     renderBookmarks();
-    renderDetail();
+    if (!state.detailBookmark || !els.detail.contains((shadow || document).activeElement)) renderDetail();
+  }
+
+  function selectView(view) {
+    if (!state.data || !VIEW_LABELS[view]) return;
+    state.selectedByView[state.view] = state.selectedFolderId;
+    state.view = view;
+    state.selectedFolderId = state.selectedByView[view];
+    if (state.selectedFolderId && !folderInView(state.selectedFolderId)) state.selectedFolderId = null;
+    state.detailBookmark = null;
+    hideMenu();
+    render();
+  }
+
+  function scopeRoots(view = state.view) {
+    if (view === "library") return [folderById(state.data.managedRoot.id)].filter(Boolean);
+    if (view === "windows") return state.data.savedWindowFolderIds.map(folderById).filter(Boolean);
+    return state.data.root.children || [];
+  }
+
+  function scopeBookmarks(view = state.view) {
+    if (view === "all") return state.data.bookmarks;
+    const ids = new Set(scopeRoots(view).map((node) => node.id));
+    return state.data.bookmarks.filter((bookmark) =>
+      ids.has(bookmark.folderId) || bookmark.folderAncestors.some((id) => ids.has(id))
+    );
+  }
+
+  function folderInView(id) {
+    const folder = folderById(id);
+    if (!folder) return false;
+    if (state.view === "all") return id !== state.data.root.id;
+    return scopeRoots().some((node) => {
+      let found = false;
+      walk(node, (child) => { if (child.id === id && !child.url) found = true; });
+      return found;
+    });
+  }
+
+  function newFolderParent() {
+    return state.selectedFolderId || (state.view === "library" ? state.data.managedRoot.id : null);
+  }
+
+  function renderNavigation() {
+    root.dataset.view = state.view;
+    const label = VIEW_LABELS[state.view];
+    els.current.textContent = label;
+    els.layout.setAttribute("aria-labelledby", `ba-view-${state.view}`);
+    els.treeTitle.textContent = label;
+    els.tree.setAttribute("aria-label", `${label} folders`);
+    els.overviewLabel.textContent = state.view === "all" ? "All bookmarks" :
+      (state.view === "windows" ? "All saved windows" : "All in Library");
+    els.overviewCount.textContent = scopeBookmarks().length;
+    els.overview.setAttribute("aria-pressed", String(!state.selectedFolderId));
+    els.search.placeholder = `Search ${label}`;
+    els.search.setAttribute("aria-label", `Search ${label}`);
+    const parentId = newFolderParent();
+    els.newFolder.disabled = !parentId || state.data.readOnlyNodeIds.includes(parentId);
+    els.newFolder.title = parentId ? "New folder" : "Select a destination folder";
+    els.export.title = `Export ${state.selectedFolderId ? folderById(state.selectedFolderId).title : label}`;
+    els.export.disabled = false;
+    for (const tab of els.tabs) {
+      const selected = tab.dataset.view === state.view;
+      tab.setAttribute("aria-selected", String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      tab.querySelector(".ba-nav-count").textContent = scopeBookmarks(tab.dataset.view).length;
+    }
+  }
+
+  function onStorageChanged(changes, area) {
+    if (area !== "local" || !changes.bookmarkRevision) return;
+    clearTimeout(state.refreshTimer);
+    state.refreshTimer = setTimeout(() => load().catch(showError), 180);
   }
 
   function renderTree() {
     els.tree.textContent = "";
-    const rootNode = state.data.root;
-    els.tree.append(renderFolderNode(rootNode, true));
+    const nodes = state.view === "library" ? (scopeRoots()[0]?.children || []) : scopeRoots();
+    for (const node of nodes) {
+      els.tree.append(node.url ? renderTreeBookmark(node) : renderFolderNode(node));
+    }
+    if (!nodes.length) {
+      const empty = document.createElement("li");
+      empty.className = "ba-tree-empty";
+      empty.textContent = state.view === "windows" ? "No saved windows" : "No folders";
+      els.tree.append(empty);
+    }
   }
 
   function renderFolderNode(folder, isRoot = false) {
@@ -227,6 +368,8 @@
     disclosure.type = "button";
     disclosure.className = "ba-disclosure";
     disclosure.textContent = expanded ? "v" : ">";
+    disclosure.setAttribute("aria-expanded", String(expanded));
+    disclosure.setAttribute("aria-label", `${expanded ? "Collapse" : "Expand"} ${folder.title}`);
     disclosure.addEventListener("click", (event) => {
       event.stopPropagation();
       state.selectedFolderId = folder.id;
@@ -242,6 +385,8 @@
     name.type = "button";
     name.className = "ba-name";
     name.textContent = folderDisplayName(folder, isRoot);
+    name.title = state.data.folders.find((node) => node.id === folder.id)?.path || folder.title;
+    if (selected) name.setAttribute("aria-current", "true");
     name.addEventListener("click", () => selectFolder(folder.id));
 
     const count = document.createElement("span");
@@ -254,6 +399,7 @@
     menu.textContent = "...";
     menu.addEventListener("click", (event) => showFolderMenu(event, folder, isRoot));
 
+    menu.setAttribute("aria-label", `Options for ${folder.title}`);
     row.append(disclosure, folderIcon, name, count, menu);
     item.append(row);
 
@@ -289,7 +435,8 @@
     title.type = "button";
     title.className = "ba-bookmark-title";
     title.textContent = node.title || node.url;
-    title.addEventListener("click", () => openBookmark(node.id));
+    title.title = `${node.title || node.url}\n${node.url}`;
+    title.addEventListener("click", () => openBookmark(node.id).catch(showError));
 
     const menu = document.createElement("button");
     menu.type = "button";
@@ -300,26 +447,33 @@
       if (bookmark) showBookmarkMenu(event, bookmark);
     });
 
+    menu.setAttribute("aria-label", `Options for ${node.title || "bookmark"}`);
     item.append(bookmarkIcon, title, menu);
     return item;
   }
 
   function selectFolder(folderId, expand = true) {
+    if (!state.data) return;
     state.selectedFolderId = folderId;
-    if (expand) state.expanded.add(folderId);
+    if (expand && folderId) state.expanded.add(folderId);
     render();
   }
 
   function renderBookmarks() {
+    if (!state.data) return;
     const folder = folderById(state.selectedFolderId);
     const bookmarks = visibleBookmarks();
-    els.listTitle.textContent = folder ? folderDisplayName(folder, folder.id === state.data.managedRoot.id) : "Bookmarks";
+    els.listTitle.textContent = folder ? folderDisplayName(folder) : VIEW_LABELS[state.view];
     els.listCount.textContent = `${bookmarks.length} shown`;
     els.bookmarkList.textContent = "";
+    els.check.disabled = !bookmarks.length;
+    els.index.disabled = !bookmarks.length;
 
     if (!bookmarks.length) {
-      const copy = state.search ? "No bookmarks match these filters." : "This folder does not have bookmarks yet.";
-      const image = state.search ? ILLUSTRATIONS.noSearchResults : ILLUSTRATIONS.emptyLibrary;
+      const filtered = state.search || state.dateFilter !== "all" || state.issueFilter !== "all";
+      const copy = filtered ? "No bookmarks match these filters." :
+        (state.view === "windows" && !scopeRoots().length ? "No saved windows yet." : "No bookmarks here yet.");
+      const image = filtered ? ILLUSTRATIONS.noSearchResults : ILLUSTRATIONS.emptyLibrary;
       els.bookmarkList.append(renderEmptyState(copy, image));
       return;
     }
@@ -353,7 +507,8 @@
     title.type = "button";
     title.className = "ba-bookmark-title";
     title.textContent = bookmark.title || bookmark.url;
-    title.addEventListener("click", () => openBookmark(bookmark.id));
+    title.title = `${bookmark.title || bookmark.url}\n${bookmark.url}`;
+    title.addEventListener("click", () => openBookmark(bookmark.id).catch(showError));
 
     const sub = document.createElement("div");
     sub.className = "ba-bookmark-sub";
@@ -373,6 +528,7 @@
     menu.textContent = "...";
     menu.addEventListener("click", (event) => showBookmarkMenu(event, bookmark));
 
+    menu.setAttribute("aria-label", `Options for ${bookmark.title || "bookmark"}`);
     row.append(bookmarkIcon, meta, date, menu);
     return row;
   }
@@ -431,8 +587,9 @@
   }
 
   function visibleBookmarks() {
-    let bookmarks = [...state.data.bookmarks];
-    if (state.selectedFolderId && state.selectedFolderId !== state.data.managedRoot.id) {
+    if (!state.data) return [];
+    let bookmarks = [...scopeBookmarks()];
+    if (state.selectedFolderId) {
       bookmarks = bookmarks.filter((bookmark) =>
         bookmark.folderId === state.selectedFolderId || bookmark.folderAncestors.includes(state.selectedFolderId)
       );
@@ -497,15 +654,18 @@
   function showFolderMenu(event, folder, isRoot = false) {
     event.preventDefault();
     event.stopPropagation();
-    const protectedFolder = isRoot || folder.id === state.data.defaultFolder.id;
+    const protectedFolder = state.data.protectedNodeIds.includes(folder.id);
+    const readOnly = state.data.readOnlyNodeIds.includes(folder.id);
     const items = [
       { label: "Expand / collapse", action: () => toggleFolder(folder.id) },
-      { label: "New subfolder", action: () => createFolder(folder.id) },
-      { label: "Sort this folder", action: () => sortFolder(folder.id) },
       { label: "Check links", action: () => checkIds([folder.id]) },
       { label: "Refresh page index", action: () => refreshIndex([folder.id]) }
     ];
-    if (!protectedFolder) {
+    if (!readOnly) items.splice(1, 0,
+      { label: "New subfolder", action: () => createFolder(folder.id) },
+      { label: "Sort this folder", action: () => sortFolder(folder.id) }
+    );
+    if (!protectedFolder && !readOnly) {
       items.push(
         { separator: true },
         { label: "Rename", action: () => renameNode(folder.id, folder.title) },
@@ -519,17 +679,21 @@
   function showBookmarkMenu(event, bookmark) {
     event.preventDefault();
     event.stopPropagation();
-    showMenu(event, [
+    const items = [
       { label: "Open", action: () => openBookmark(bookmark.id) },
       { label: "Notes", action: () => openNotes(bookmark) },
-      { label: "Move", action: () => moveIds([bookmark.id]) },
-      { label: "Rename", action: () => renameNode(bookmark.id, bookmark.title) },
       { separator: true },
       { label: "Refresh page index", action: () => refreshIndex([bookmark.id]) },
-      { label: "Check link", action: () => checkIds([bookmark.id]) },
-      { separator: true },
-      { label: "Delete", danger: true, action: () => deleteIds([bookmark.id]) }
-    ]);
+      { label: "Check link", action: () => checkIds([bookmark.id]) }
+    ];
+    if (!state.data.readOnlyNodeIds.includes(bookmark.id)) {
+      items.splice(2, 0,
+        { label: "Move", action: () => moveIds([bookmark.id]) },
+        { label: "Rename", action: () => renameNode(bookmark.id, bookmark.title) }
+      );
+      items.push({ separator: true }, { label: "Delete", danger: true, action: () => deleteIds([bookmark.id]) });
+    }
+    showMenu(event, items);
   }
 
   function showMenu(event, items) {
@@ -566,7 +730,7 @@
   function toggleFolder(id) {
     if (state.expanded.has(id)) state.expanded.delete(id);
     else state.expanded.add(id);
-    renderTree();
+    render();
   }
 
   async function openBookmark(id) {
@@ -593,11 +757,12 @@
   }
 
   async function createFolder(parentId) {
+    if (!parentId) return;
     const title = prompt("New folder name", "");
     if (title === null || !title.trim()) return;
     const result = await send("createFolder", {
       title: title.trim(),
-      parentId: parentId && parentId !== state.data.defaultFolder.id ? parentId : state.data.managedRoot.id
+      parentId
     });
     state.selectedFolderId = result.folder.id;
     state.expanded.add(result.folder.parentId);
@@ -612,15 +777,16 @@
   }
 
   async function moveIds(ids) {
-    const folders = state.data.folders.map((folder) => `${folder.id}\t${folder.path || folder.title}`).join("\n");
+    const destinations = state.data.folders.filter((folder) => !state.data.readOnlyNodeIds.includes(folder.id));
+    const folders = destinations.map((folder) => folder.path || folder.title).join("\n");
     const label = prompt(`Move to folder name. Available folders:\n${folders}`, DEFAULT_FOLDER_TITLE);
     if (label === null || !label.trim()) return;
-    const target = state.data.folders.find((folder) =>
-      folder.title.toLowerCase() === label.trim().toLowerCase() ||
-      folder.path.toLowerCase() === label.trim().toLowerCase()
-    );
+    const query = label.trim().toLowerCase();
+    const paths = destinations.filter((folder) => folder.path.toLowerCase() === query);
+    const matches = paths.length ? paths : destinations.filter((folder) => folder.title.toLowerCase() === query);
+    const target = matches.length === 1 ? matches[0] : null;
     if (!target) {
-      setStatus("Folder not found.");
+      setStatus(matches.length ? "More than one folder matches. Use the full folder path." : "Folder not found.");
       return;
     }
     const result = await send("bulkMove", { ids, folderId: target.id });
@@ -630,7 +796,7 @@
   async function deleteIds(ids) {
     if (!confirm(`Delete ${ids.length} item${ids.length === 1 ? "" : "s"}?`)) return;
     const result = await send("bulkDelete", { ids });
-    await load(`Deleted ${result.deleted}.`);
+    await load(`Deleted ${result.deleted}.${result.failed ? ` Could not delete ${result.failed}.` : ""}`);
   }
 
   async function sortFolder(folderId) {
@@ -652,18 +818,38 @@
   }
 
   async function refreshIndex(ids) {
+    if (!ids.length) return;
     setStatus("Indexing...");
     const result = await send("refreshIndex", { ids });
     await load(`Indexed ${result.indexed}.`);
   }
 
+  function exportRoot() {
+    if (state.selectedFolderId) return folderById(state.selectedFolderId);
+    if (state.view === "all") return state.data.root;
+    if (state.view === "library") return scopeRoots()[0];
+    return { title: VIEW_LABELS[state.view], children: scopeRoots() };
+  }
+
   function exportJson() {
+    const exportedRoot = exportRoot();
+    const exportedIds = new Set();
+    const metadataByUrl = {};
+    walk(exportedRoot, (node) => {
+      exportedIds.add(node.id);
+      if (node.url) {
+        const key = normalizeUrl(node.url);
+        if (state.data.metadataByUrl[key]) metadataByUrl[key] = state.data.metadataByUrl[key];
+      }
+    });
     const payload = {
       app: "Local Bookmark Admin",
       generatedAt: new Date().toISOString(),
-      root: state.data.root,
-      metadataByUrl: state.data.metadataByUrl,
-      duplicateGroups: state.data.duplicateGroups
+      root: exportedRoot,
+      metadataByUrl,
+      duplicateGroups: state.data.duplicateGroups.map((group) => ({
+        ...group, bookmarks: group.bookmarks.filter((bookmark) => exportedIds.has(bookmark.id))
+      })).filter((group) => group.bookmarks.length > 1).map((group) => ({ ...group, count: group.bookmarks.length }))
     };
     downloadText("bookmark-admin-backup.json", JSON.stringify(payload, null, 2), "application/json");
   }
@@ -675,7 +861,7 @@
       "<TITLE>Bookmarks</TITLE>",
       "<H1>Bookmarks</H1>",
       "<DL><p>",
-      renderHtmlNode(state.data.root, 1),
+      renderHtmlNode(exportRoot(), 1),
       "</DL><p>"
     ].join("\n");
     downloadText("bookmark-admin-bookmarks.html", html, "text/html");
@@ -755,8 +941,14 @@
       return;
     }
 
+    disposeOverlay();
+  }
+
+  function disposeOverlay() {
     document.removeEventListener("keydown", onKeyDown, true);
-    root.remove();
+    chrome.storage.onChanged.removeListener(onStorageChanged);
+    clearTimeout(state.refreshTimer);
+    host.remove();
   }
 
   function countBookmarks(folder) {
@@ -782,7 +974,8 @@
   }
 
   function folderDisplayName(folder, isRoot = false) {
-    if (isRoot || folder.id === state.data.managedRoot.id) return "All bookmarks";
+    if (folder.id === state.data.managedRoot.id) return "Library";
+    if (folder.id === state.data.root.id) return "All Bookmarks";
     return folder.title || "Untitled";
   }
 
