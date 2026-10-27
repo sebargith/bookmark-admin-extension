@@ -45,7 +45,10 @@
     loadSequence: 0,
     refreshTimer: null,
     action: null,
-    actionBusy: false
+    actionBusy: false,
+    selectedBookmarks: new Set(),
+    selectionAnchor: null,
+    renamePreviewTimer: null
   };
 
   const existing = document.getElementById(ROOT_ID);
@@ -133,8 +136,17 @@
           <div class="ba-panel-header">
             <h2 class="ba-list-title">Bookmarks</h2>
             <span class="ba-list-count ba-muted"></span>
+            <input class="ba-select-all" type="checkbox" aria-label="Select all visible bookmarks" title="Select all visible bookmarks">
           </div>
           <nav class="ba-breadcrumbs" aria-label="Folder path"></nav>
+          <section class="ba-selection-bar" role="toolbar" aria-label="Selected bookmarks" hidden>
+            <span class="ba-selection-count" role="status" aria-live="polite"></span>
+            <button class="ba-button" data-bulk-action="move" type="button"><img src="${ICONS.folderOpen}" alt=""><span>Move</span></button>
+            <button class="ba-button" data-bulk-action="rename" type="button">Rename</button>
+            <button class="ba-button ba-danger" data-bulk-action="delete" type="button">Delete</button>
+            <button class="ba-icon-btn ba-selection-more" type="button" title="More selected actions" aria-label="More selected actions">...</button>
+            <button class="ba-icon-btn ba-selection-clear" type="button" title="Clear selection" aria-label="Clear selection">x</button>
+          </section>
           <section class="ba-capture-bar" aria-label="Saved window" hidden></section>
           <div class="ba-bookmark-list"></div>
         </section>
@@ -168,6 +180,10 @@
     collapseAll: root.querySelector(".ba-collapse-all"),
     breadcrumbs: root.querySelector(".ba-breadcrumbs"),
     captureBar: root.querySelector(".ba-capture-bar"),
+    selectAll: root.querySelector(".ba-select-all"),
+    selectionBar: root.querySelector(".ba-selection-bar"),
+    selectionCount: root.querySelector(".ba-selection-count"),
+    selectionClear: root.querySelector(".ba-selection-clear"),
     actionLayer: root.querySelector(".ba-action-layer"),
     undo: root.querySelector(".ba-undo"),
     search: root.querySelector(".ba-search"),
@@ -221,6 +237,21 @@
     els.overview.addEventListener("click", () => selectFolder(null).catch(showError));
     els.expandAll.addEventListener("click", () => setAllExpanded(true));
     els.collapseAll.addEventListener("click", () => setAllExpanded(false));
+    els.selectAll.addEventListener("change", () => {
+      if (els.selectAll.checked) selectAllVisible();
+      else clearBookmarkSelection();
+    });
+    els.selectionClear.addEventListener("click", () => clearBookmarkSelection(true));
+    for (const button of els.selectionBar.querySelectorAll("[data-bulk-action]")) {
+      button.addEventListener("click", () => openBulkAction(button.dataset.bulkAction).catch(showError));
+    }
+    root.querySelector(".ba-selection-more").addEventListener("click", (event) => {
+      event.stopPropagation();
+      showMenu(event, [
+        { label: "Check selected links", action: () => checkIds([...state.selectedBookmarks]) },
+        { label: "Index selected pages", action: () => refreshIndex([...state.selectedBookmarks]) }
+      ]);
+    });
     els.undo.addEventListener("click", async () => {
       try { await flushNotes(); const result = await send("undoLast"); await load(result.undone); }
       catch (error) { showError(error); }
@@ -337,6 +368,12 @@
 
   function captureNavigationFocus() {
     const active = shadow?.activeElement || document.activeElement;
+    if (active === els.selectAll) return { kind: "list-control" };
+    const bookmarkRow = active?.closest(".ba-bookmark-row");
+    if (bookmarkRow) return { kind: "bookmark", id: bookmarkRow.dataset.bookmarkId,
+      control: active.matches(".ba-select-bookmark") ? ".ba-select-bookmark" : active.matches(".ba-icon-btn") ? ".ba-icon-btn" : ".ba-bookmark-title" };
+    if (els.selectionBar.contains(active)) return { kind: "selection", action: active.dataset.bulkAction,
+      id: state.selectionAnchor || [...state.selectedBookmarks][0] };
     if (els.captureBar.contains(active) && active.dataset.captureAction) {
       return { kind: "capture", id: state.selectedFolderId, action: active.dataset.captureAction };
     }
@@ -354,6 +391,15 @@
 
   function restoreNavigationFocus(memory) {
     if (!memory) return;
+    if (memory.kind === "list-control") { (els.selectAll.disabled ? els.search : els.selectAll).focus({ preventScroll: true }); return; }
+    if (memory.kind === "bookmark" || memory.kind === "selection") {
+      const button = memory.kind === "selection" && memory.action && !els.selectionBar.hidden &&
+        els.selectionBar.querySelector(`[data-bulk-action="${memory.action}"]`);
+      const row = memory.id && els.bookmarkList.querySelector(`[data-bookmark-id="${CSS.escape(memory.id)}"]`);
+      const target = button && !button.disabled ? button : row?.querySelector(memory.control || ".ba-select-bookmark") || els.selectAll;
+      (target.disabled ? els.search : target).focus({ preventScroll: true });
+      return;
+    }
     if (memory.kind === "capture") {
       const action = state.selectedFolderId === memory.id && els.captureBar.querySelector(`[data-capture-action="${memory.action}"]`);
       const row = els.tree.querySelector(`[data-folder-id="${CSS.escape(memory.id)}"] .ba-name`);
@@ -373,6 +419,7 @@
   async function selectView(view) {
     if (!state.data || !VIEW_LABELS[view]) return;
     await flushNotes();
+    resetBookmarkSelection();
     state.selectedByView[state.view] = state.selectedFolderId;
     state.view = view;
     state.selectedFolderId = state.selectedByView[view];
@@ -701,6 +748,7 @@
   async function selectFolder(folderId, expand = true) {
     if (!state.data) return;
     await flushNotes();
+    resetBookmarkSelection();
     state.detailBookmark = null;
     state.selectedFolderId = folderId;
     state.selectedByView[state.view] = folderId;
@@ -712,8 +760,13 @@
 
   function renderBookmarks() {
     if (!state.data) return;
+    const focusMemory = captureNavigationFocus();
     const folder = folderById(state.selectedFolderId);
     const bookmarks = visibleBookmarks();
+    const visibleIds = new Set(bookmarks.map((bookmark) => bookmark.id));
+    state.selectedBookmarks = new Set([...state.selectedBookmarks].filter((id) => visibleIds.has(id)));
+    if (!visibleIds.has(state.selectionAnchor)) state.selectionAnchor = null;
+    renderSelectionBar(bookmarks);
     els.listTitle.textContent = folder ? folderDisplayName(folder) : VIEW_LABELS[state.view];
     els.listCount.textContent = `${bookmarks.length} shown`;
     els.bookmarkList.textContent = "";
@@ -726,24 +779,79 @@
         (state.view === "windows" && !scopeRoots().length ? "No saved windows yet." : "No bookmarks here yet.");
       const image = filtered ? ILLUSTRATIONS.noSearchResults : ILLUSTRATIONS.emptyLibrary;
       els.bookmarkList.append(renderEmptyState(copy, image));
+      if (["bookmark", "selection", "list-control"].includes(focusMemory?.kind)) restoreNavigationFocus(focusMemory);
       return;
     }
 
     for (const bookmark of bookmarks) {
       els.bookmarkList.append(renderBookmarkRow(bookmark));
     }
+    if (["bookmark", "selection", "list-control"].includes(focusMemory?.kind)) restoreNavigationFocus(focusMemory);
+  }
+
+  function resetBookmarkSelection() {
+    state.selectedBookmarks.clear();
+    state.selectionAnchor = null;
+  }
+
+  function clearBookmarkSelection(focus = false) {
+    const id = state.selectionAnchor || [...state.selectedBookmarks][0];
+    resetBookmarkSelection();
+    renderBookmarks();
+    if (focus) (id && els.bookmarkList.querySelector(`[data-bookmark-id="${CSS.escape(id)}"] .ba-select-bookmark`) || els.selectAll).focus();
+  }
+
+  function selectAllVisible() {
+    const bookmarks = visibleBookmarks();
+    state.selectedBookmarks = new Set(bookmarks.map((bookmark) => bookmark.id));
+    state.selectionAnchor ||= bookmarks[0]?.id || null;
+    renderBookmarks();
+  }
+
+  function selectBookmark(id, event = {}) {
+    const ids = visibleBookmarkIds();
+    const end = ids.indexOf(id);
+    if (end < 0) return;
+    const start = ids.indexOf(state.selectionAnchor);
+    if (event.shiftKey && start >= 0) {
+      if (!event.ctrlKey && !event.metaKey) state.selectedBookmarks.clear();
+      for (const item of ids.slice(Math.min(start, end), Math.max(start, end) + 1)) state.selectedBookmarks.add(item);
+    } else {
+      if (state.selectedBookmarks.has(id)) state.selectedBookmarks.delete(id);
+      else state.selectedBookmarks.add(id);
+      state.selectionAnchor = id;
+    }
+    renderBookmarks();
+  }
+
+  function renderSelectionBar(bookmarks) {
+    const count = state.selectedBookmarks.size;
+    const readOnly = [...state.selectedBookmarks].filter((id) => state.data.readOnlyNodeIds.includes(id)).length;
+    els.listPanel.classList.toggle("ba-selecting", count > 0);
+    els.selectionBar.hidden = !count;
+    els.selectAll.disabled = !bookmarks.length;
+    els.selectAll.checked = Boolean(bookmarks.length && count === bookmarks.length);
+    els.selectAll.indeterminate = count > 0 && count < bookmarks.length;
+    els.selectionCount.textContent = `${count} selected${readOnly ? ` (${readOnly} read-only)` : ""}`;
+    for (const button of els.selectionBar.querySelectorAll("[data-bulk-action]")) {
+      button.disabled = Boolean(readOnly || count > 1000);
+      button.title = readOnly ? "Selection includes read-only bookmarks" : count > 1000 ? "Select at most 1000 bookmarks" : "";
+    }
+    els.captureBar.hidden = Boolean(count) || !captureById(state.selectedFolderId);
   }
 
   function renderBookmarkRow(bookmark) {
     const row = document.createElement("article");
     row.className = "ba-bookmark-row";
     row.dataset.bookmarkId = bookmark.id;
+    row.classList.toggle("ba-row-selected", state.selectedBookmarks.has(bookmark.id));
     row.draggable = true;
     row.addEventListener("contextmenu", (event) => {
       event.preventDefault();
       showBookmarkMenu(event, bookmark);
     });
     row.addEventListener("dragstart", (event) => {
+      if (state.selectedBookmarks.size) { event.preventDefault(); return; }
       event.dataTransfer.setData("application/x-bookmark-node", bookmark.id);
       event.dataTransfer.effectAllowed = "move";
     });
@@ -752,6 +860,18 @@
     bookmarkIcon.className = "ba-node-icon";
     bookmarkIcon.alt = "";
     bookmarkIcon.src = ICONS.bookmark;
+    const selection = document.createElement("span");
+    selection.className = "ba-bookmark-select";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "ba-select-bookmark";
+    checkbox.checked = state.selectedBookmarks.has(bookmark.id);
+    checkbox.setAttribute("aria-label", `Select ${bookmarkTitle(bookmark)}`);
+    checkbox.addEventListener("click", (event) => { event.preventDefault(); selectBookmark(bookmark.id, event); });
+    checkbox.addEventListener("keydown", (event) => {
+      if (event.key === " " && event.shiftKey) { event.preventDefault(); selectBookmark(bookmark.id, event); }
+    });
+    selection.append(bookmarkIcon, checkbox);
 
     const meta = document.createElement("div");
     meta.className = "ba-bookmark-meta";
@@ -760,7 +880,13 @@
     title.className = "ba-bookmark-title";
     title.textContent = bookmarkTitle(bookmark);
     title.title = `${bookmarkTitle(bookmark)}\n${bookmark.url}`;
-    title.addEventListener("click", () => openBookmark(bookmark.id).catch(showError));
+    title.addEventListener("click", (event) => {
+      if (event.ctrlKey || event.metaKey || event.shiftKey || state.selectedBookmarks.size) selectBookmark(bookmark.id, event);
+      else openBookmark(bookmark.id).catch(showError);
+    });
+    row.addEventListener("click", (event) => {
+      if (!event.target.closest("button,input")) selectBookmark(bookmark.id, event);
+    });
 
     const sub = document.createElement("div");
     sub.className = "ba-bookmark-sub";
@@ -787,7 +913,7 @@
     menu.addEventListener("click", (event) => showBookmarkMenu(event, bookmark));
 
     menu.setAttribute("aria-label", `Options for ${bookmarkTitle(bookmark)}`);
-    row.append(bookmarkIcon, meta, renderLinkIndicator(bookmark), date, menu);
+    row.append(selection, meta, renderLinkIndicator(bookmark), date, menu);
     return row;
   }
 
@@ -1074,6 +1200,7 @@
       { label: "Refresh page index", action: () => refreshIndex([bookmark.id]) },
       { label: "Check link", action: () => checkIds([bookmark.id]) }
     ];
+    if (visibleBookmarkIds().includes(bookmark.id)) items.unshift({ label: state.selectedBookmarks.has(bookmark.id) ? "Deselect" : "Select", action: () => selectBookmark(bookmark.id) });
     if (!state.data.readOnlyNodeIds.includes(bookmark.id)) {
       const capture = captureForBookmark(bookmark);
       if (capture) items.unshift({ label: "Move to Library", action: () => openCaptureAction("move", capture, bookmark) });
@@ -1083,7 +1210,143 @@
       );
       items.push({ separator: true }, { label: "Delete", danger: true, action: () => deleteIds([bookmark.id]) });
     }
+    if (state.selectedBookmarks.has(bookmark.id) && state.selectedBookmarks.size > 1 &&
+        ![...state.selectedBookmarks].some((id) => state.data.readOnlyNodeIds.includes(id))) {
+      items.unshift(
+        { label: `Move selected (${state.selectedBookmarks.size})`, action: () => openBulkAction("move") },
+        { label: "Rename selected", action: () => openBulkAction("rename") },
+        { label: "Delete selected", danger: true, action: () => openBulkAction("delete") },
+        { separator: true }
+      );
+    }
     showMenu(event, items);
+  }
+
+  function bulkPayload(action, form) {
+    const destination = form.querySelector(".ba-bulk-destination")?.value;
+    return { action: action.type, ids: action.ids, expected: action.expected,
+      folderId: destination, destinationPath: destination ? folderTrail(destination).map((folder) => folder.id) : undefined,
+      mode: form.querySelector(".ba-bulk-mode")?.value, text: form.querySelector(".ba-bulk-text")?.value,
+      find: form.querySelector(".ba-bulk-find")?.value };
+  }
+
+  async function openBulkAction(type) {
+    await flushNotes();
+    const ids = visibleBookmarkIds().filter((id) => state.selectedBookmarks.has(id));
+    if (!ids.length || ids.length > 1000) throw new Error("Select between 1 and 1000 bookmarks.");
+    if (ids.some((id) => state.data.readOnlyNodeIds.includes(id))) throw new Error("The selection contains read-only bookmarks.");
+    state.detailBookmark = null;
+    renderDetail();
+    const bookmarks = ids.map(findFlatBookmark);
+    const action = { kind: "bulk", type, ids, expected: bookmarks.map((bookmark) => ({ id: bookmark.id, parentId: bookmark.parentId,
+      title: bookmark.title || "", url: bookmark.url, index: bookmark.index })), returnFocus: shadow?.activeElement || document.activeElement, previewSequence: 0 };
+    state.action = action;
+    els.actionLayer.innerHTML = `<form class="ba-action-dialog" role="dialog" aria-modal="true" aria-labelledby="ba-action-title" tabindex="-1">
+      <h2 id="ba-action-title"></h2><p class="ba-action-copy"></p>
+      <label class="ba-bulk-field ba-destination-field" hidden><span>Destination folder</span><select class="ba-select ba-bulk-destination" aria-label="Destination folder"></select></label>
+      <div class="ba-bulk-rename-fields" hidden>
+        <label class="ba-bulk-field"><span>Rename mode</span><select class="ba-select ba-bulk-mode" aria-label="Rename mode"><option value="prefix">Add prefix</option><option value="suffix">Add suffix</option><option value="replace">Replace text</option></select></label>
+        <label class="ba-bulk-field ba-find-field" hidden><span>Find</span><input class="ba-input ba-bulk-find" aria-label="Find text" maxlength="300"></label>
+        <label class="ba-bulk-field"><span>Text</span><input class="ba-input ba-bulk-text" aria-label="Rename text" maxlength="300"></label>
+      </div>
+      <p class="ba-bulk-preview-status" role="status" aria-live="polite"></p><ul class="ba-rename-preview"></ul>
+      <p class="ba-action-error" role="alert"></p>
+      <div class="ba-action-buttons"><button class="ba-button ba-action-cancel" type="button">Cancel</button><button class="ba-button ba-action-submit" type="submit" disabled></button></div>
+    </form>`;
+    const form = els.actionLayer.querySelector("form");
+    form.querySelector("h2").textContent = `${type === "move" ? "Move" : type === "delete" ? "Delete" : "Rename"} selected bookmarks`;
+    form.querySelector(".ba-action-copy").textContent = type === "delete" ? `Delete ${ids.length} selected bookmarks? Folders and other bookmarks will remain.` :
+      type === "move" ? `Move ${ids.length} selected bookmarks. Names, URLs and notes will be kept.` : `${ids.length} selected bookmarks`;
+    const submit = form.querySelector(".ba-action-submit");
+    submit.textContent = type === "move" ? "Move" : type === "delete" ? "Delete" : "Rename";
+    submit.classList.add(type === "delete" ? "ba-danger" : "ba-blue");
+    if (type === "move") {
+      form.querySelector(".ba-destination-field").hidden = false;
+      const select = form.querySelector(".ba-bulk-destination");
+      for (const folder of state.data.folders) {
+        if (folder.id === state.data.root.id || state.data.readOnlyNodeIds.includes(folder.id) || bookmarks.every((bookmark) => bookmark.parentId === folder.id)) continue;
+        const option = document.createElement("option");
+        option.value = folder.id;
+        option.textContent = folder.path || folder.title;
+        select.append(option);
+      }
+      if ([...select.options].some((option) => option.value === state.data.defaultFolder.id)) select.value = state.data.defaultFolder.id;
+    }
+    if (type === "rename") form.querySelector(".ba-bulk-rename-fields").hidden = false;
+    const refreshPreview = () => {
+      clearTimeout(state.renamePreviewTimer);
+      action.previewSequence += 1;
+      submit.disabled = true;
+      form.querySelector(".ba-find-field").hidden = form.querySelector(".ba-bulk-mode").value !== "replace";
+      state.renamePreviewTimer = setTimeout(() => previewBulkAction(action, form), type === "rename" ? 180 : 0);
+    };
+    for (const input of form.querySelectorAll("input,select")) {
+      input.addEventListener(input.tagName === "SELECT" ? "change" : "input", refreshPreview);
+    }
+    bindActionDialog(form, submitBulkAction, form.querySelector(type === "rename" ? ".ba-bulk-text" : type === "move" ? ".ba-bulk-destination" : ".ba-action-cancel"));
+    refreshPreview();
+  }
+
+  async function previewBulkAction(action, form) {
+    const sequence = action.previewSequence;
+    try {
+      const payload = bulkPayload(action, form);
+      const preview = await send("previewBookmarkBatch", payload);
+      if (state.action !== action || sequence !== action.previewSequence || state.actionBusy) return;
+      form.querySelector(".ba-action-error").textContent = "";
+      form.querySelector(".ba-bulk-preview-status").textContent = `${preview.count} will change${preview.unchanged ? `; ${preview.unchanged} unchanged` : ""}`;
+      const list = form.querySelector(".ba-rename-preview");
+      list.textContent = "";
+      if (action.type === "rename") for (const example of preview.examples) {
+        const item = document.createElement("li");
+        const before = document.createElement("span");
+        const after = document.createElement("span");
+        before.textContent = example.before;
+        after.textContent = example.after;
+        item.append(before, after);
+        list.append(item);
+      }
+      action.previewPayload = payload;
+      form.querySelector(".ba-action-submit").disabled = !preview.count;
+    } catch (error) {
+      if (state.action !== action || sequence !== action.previewSequence || state.actionBusy) return;
+      form.querySelector(".ba-action-error").textContent = error.message;
+      form.querySelector(".ba-bulk-preview-status").textContent = "";
+      form.querySelector(".ba-rename-preview").textContent = "";
+    }
+  }
+
+  async function submitBulkAction(event) {
+    event.preventDefault();
+    const action = state.action;
+    const form = event.currentTarget;
+    if (!action || state.actionBusy || form.querySelector(".ba-action-submit").disabled) return;
+    state.actionBusy = true;
+    const controls = [...form.querySelectorAll("input,select,button")];
+    controls.forEach((control) => { control.disabled = true; });
+    try {
+      const result = await send("applyBookmarkBatch", { ...action.previewPayload, confirmed: true });
+      state.actionBusy = false;
+      resetBookmarkSelection();
+      closeCaptureAction();
+      await load(`${result.changed} bookmarks ${action.type === "delete" ? "deleted" : action.type === "move" ? "moved" : "renamed"}.${result.unchanged ? ` ${result.unchanged} unchanged.` : ""}`);
+    } catch (error) {
+      state.actionBusy = false;
+      if (!state.action) { showError(error); return; }
+      controls.forEach((control) => { control.disabled = false; });
+      form.querySelector(".ba-action-error").textContent = error.message;
+      form.querySelector(".ba-action-submit").disabled = true;
+      await load(error.message).catch(showError);
+    }
+  }
+
+  function bindActionDialog(form, submit, initialFocus) {
+    form.querySelector(".ba-action-cancel").addEventListener("click", closeCaptureAction);
+    els.actionLayer.onclick = (event) => { if (event.target === els.actionLayer) closeCaptureAction(); };
+    form.addEventListener("submit", submit);
+    els.actionLayer.hidden = false;
+    for (const child of els.win.children) if (child !== els.actionLayer) child.inert = true;
+    (initialFocus || form.querySelector(".ba-action-cancel")).focus();
   }
 
   async function openCaptureAction(type, capture, bookmark = null) {
@@ -1146,24 +1409,22 @@
       form.querySelector("input").required = true;
       form.querySelector("input").value = folder.title;
     }
-    form.querySelector(".ba-action-cancel").addEventListener("click", closeCaptureAction);
-    els.actionLayer.onclick = (event) => { if (event.target === els.actionLayer) closeCaptureAction(); };
-    form.addEventListener("submit", submitCaptureAction);
-    els.actionLayer.hidden = false;
-    for (const child of els.win.children) if (child !== els.actionLayer) child.inert = true;
-    (form.querySelector(type === "rename" ? "input" : type === "move" ? "select" : ".ba-action-cancel")).focus();
+    bindActionDialog(form, submitCaptureAction, form.querySelector(type === "rename" ? "input" : type === "move" ? "select" : ".ba-action-cancel"));
   }
 
   function closeCaptureAction() {
     if (state.actionBusy) return;
     const action = state.action;
+    clearTimeout(state.renamePreviewTimer);
     state.action = null;
     els.actionLayer.hidden = true;
     els.actionLayer.textContent = "";
     for (const child of els.win.children) child.inert = false;
     syncDetailFocus();
-    const row = action && els.tree.querySelector(`[data-folder-id="${CSS.escape(action.capture.folderId)}"] .ba-name`);
-    (action?.returnFocus?.isConnected && action.returnFocus.getClientRects().length ? action.returnFocus : row || els.search).focus();
+    if (action?.kind === "bulk" && !state.selectedBookmarks.size) { (els.selectAll.disabled ? els.search : els.selectAll).focus(); return; }
+    const row = action?.capture && els.tree.querySelector(`[data-folder-id="${CSS.escape(action.capture.folderId)}"] .ba-name`);
+    const bookmark = action?.ids?.[0] && els.bookmarkList.querySelector(`[data-bookmark-id="${CSS.escape(action.ids[0])}"] .ba-select-bookmark`);
+    (action?.returnFocus?.isConnected && action.returnFocus.getClientRects().length && !action.returnFocus.disabled ? action.returnFocus : row || bookmark || els.search).focus();
   }
 
   async function submitCaptureAction(event) {
@@ -1466,6 +1727,24 @@
   }
 
   function onKeyDown(event) {
+    const active = (shadow || document).activeElement;
+    const inBookmarkList = els.bookmarkList.contains(active) || els.selectionBar.contains(active) || active === els.selectAll;
+    if (!state.action && !state.detailDrawer && (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "a" &&
+        inBookmarkList) {
+      event.preventDefault();
+      event.stopPropagation();
+      selectAllVisible();
+      return;
+    }
+    if (!state.action && !state.detailDrawer && inBookmarkList && state.selectedBookmarks.size &&
+        !event.ctrlKey && !event.metaKey && !event.altKey && ["Delete", "F2"].includes(event.key)) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (state.selectedBookmarks.size > 1000 || [...state.selectedBookmarks].some((id) => state.data.readOnlyNodeIds.includes(id))) {
+        setStatus("Selection contains read-only bookmarks or exceeds 1000 items.");
+      } else openBulkAction(event.key === "Delete" ? "delete" : "rename").catch(showError);
+      return;
+    }
     if (event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey && (state.action || state.detailDrawer)) {
       const surface = state.action ? els.actionLayer : els.detail;
       const controls = [...surface.querySelectorAll("button, textarea, input, select, a[href], [tabindex]")]
@@ -1484,6 +1763,7 @@
     if (state.action) closeCaptureAction();
     else if (!els.menu.classList.contains("ba-hidden")) hideMenu();
     else if (state.detailBookmark) closeDetails().catch(showError);
+    else if (state.selectedBookmarks.size) clearBookmarkSelection(true);
     else closeOverlay().catch(showError);
   }
 
@@ -1508,6 +1788,7 @@
     window.removeEventListener("pagehide", onPageHide);
     clearTimeout(state.noteTimer);
     clearTimeout(state.refreshTimer);
+    clearTimeout(state.renamePreviewTimer);
     host.remove();
   }
 

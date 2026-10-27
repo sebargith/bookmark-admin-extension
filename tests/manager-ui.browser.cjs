@@ -4,6 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { createFixture, copy } = require("./helpers/chrome-fixture.cjs");
+const verifySelectionUI = require("./helpers/selection-ui.cjs");
 const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright");
 
 (async () => {
@@ -38,6 +39,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
         updateMetadata: "updateMetadata", checkLinks: "checkLinks", refreshIndex: "refreshIndex", sortFolder: "sortFolder",
         buildExport: "buildExport", openExportPage: "openExportPage" };
       Object.assign(commands, { reopenSavedWindow: "reopenSavedWindow", moveSavedItemsToLibrary: "moveSavedItemsToLibrary", undoLast: "undoLast" });
+      Object.assign(commands, { previewBookmarkBatch: "previewBookmarkBatch", applyBookmarkBatch: "applyBookmarkBatch" });
       try {
         if (type === "updateMetadata") {
           if (rejectNotes) throw new Error("Simulated storage failure");
@@ -92,6 +94,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
       assertions += 1;
     };
     await waitRows(2);
+    assertions += await verifySelectionUI({ page, fixture, artifacts });
     const quickSaveSettings = copy(fixture.storage.settings);
     const navigate = async (action) => {
       const replies = await page.evaluate(() => globalThis.__navigationReplies || 0);
@@ -114,8 +117,9 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
       leaf.children.push(child);
       leaf = child;
     }
+    const repliesBeforeBranch = await page.evaluate(() => globalThis.__managerReplies);
     await page.evaluate(() => globalThis.__bookmarkChange());
-    await page.waitForFunction(() => globalThis.__managerReplies >= 2);
+    await page.waitForFunction((before) => globalThis.__managerReplies > before, repliesBeforeBranch);
     await navigate(() => view("All Bookmarks"));
     await navigate(() => page.getByRole("button", { name: "Expand all folders", exact: true }).click());
     await page.locator('[data-folder-id="nav-8"]').waitFor();

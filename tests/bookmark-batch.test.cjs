@@ -118,3 +118,27 @@ test("changes to a remaining selected title stop a batch and preserve only succe
   assert.equal(fixture.find("211").title, "Manual edit");
   assert.deepEqual(fixture.storage.lastUndo.renames.map((item) => item.id), ["210"]);
 });
+
+test("queued overlapping batches cannot apply the same stale rename twice", async () => {
+  const fixture = createFixture();
+  const payload = request(fixture, "rename", ["210"], { mode: "prefix", text: "Read " });
+  const results = await Promise.allSettled([fixture.context.applyBookmarkBatch(payload), fixture.context.applyBookmarkBatch(payload)]);
+  assert.equal(results[0].status, "fulfilled");
+  assert.equal(results[1].status, "rejected");
+  assert.equal(fixture.find("210").title, "Read Window tab one");
+  assert.equal(fixture.storage.lastUndo.renames[0].oldTitle, "Window tab one");
+});
+
+test("undo storage failure prevents mutation and a later batch can retry", async () => {
+  const fixture = createFixture();
+  const set = fixture.chrome.storage.local.set;
+  fixture.chrome.storage.local.set = (values, callback) => {
+    if (values.lastUndo?.operationId) throw new Error("Undo storage unavailable");
+    set(values, callback);
+  };
+  const payload = request(fixture, "rename", ["210"], { mode: "prefix", text: "Read " });
+  await assert.rejects(fixture.context.applyBookmarkBatch(payload), /Undo storage unavailable/);
+  assert.deepEqual(fixture.mutations, []);
+  fixture.chrome.storage.local.set = set;
+  assert.equal((await fixture.context.applyBookmarkBatch(payload)).changed, 1);
+});

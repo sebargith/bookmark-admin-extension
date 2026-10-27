@@ -7,6 +7,7 @@ Local Bookmark Admin is designed to keep bookmark data local to Chrome.
 - Chrome bookmarks are stored in Chrome's native bookmark system.
 - Notes, generated search keywords, link-check status, open counts, and undo metadata are stored in `chrome.storage.local`.
 - Generated search keywords are compact metadata, not full saved page copies.
+- Bookmark selections and batch-preview drafts are held only in manager memory and discarded when it closes. Confirmed native batch mutations store the same local undo metadata used by other move, rename and delete actions. Previewing a rename does not fetch pages or change native bookmarks.
 - The manager stores its active view, selected native folder IDs per view, and expanded folder IDs in `chrome.storage.local`. Navigation memory does not include page contents, search queries, or a separate browsing history, and is independent of the popup save destination.
 - `Save all windows` copies tab titles and URLs into native bookmarks, one numbered bookmarks-bar folder per window. It excludes incognito windows and does not fetch page content or store a separate tab history.
 - Recognized saved-window folder IDs, capture timestamps, and original saved-tab counts are stored locally. Source Chrome window IDs are not retained. Older numbered folders use their native creation date when the actual capture time is unknown. This local identity metadata is not synced by the extension.

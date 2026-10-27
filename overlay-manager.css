@@ -518,6 +518,48 @@
     rgba(15, 23, 42, 0.72);
 }
 
+.ba-list-title { flex: 1; }
+.ba-list-count { flex: 0 0 auto; white-space: nowrap; }
+.ba-select-all, .ba-select-bookmark { width: 16px; height: 16px; margin: 0; accent-color: #34d399; cursor: pointer; }
+.ba-select-all { flex: 0 0 auto; }
+.ba-bookmark-select { position: relative; display: grid; width: 16px; height: 16px; place-items: center; }
+.ba-bookmark-select img { width: 16px; height: 16px; }
+.ba-select-bookmark { position: absolute; inset: 0; opacity: 0; }
+.ba-bookmark-row:hover .ba-select-bookmark,
+.ba-bookmark-row:focus-within .ba-select-bookmark,
+.ba-selecting .ba-select-bookmark { opacity: 1; pointer-events: auto; }
+.ba-bookmark-row:hover .ba-bookmark-select img,
+.ba-bookmark-row:focus-within .ba-bookmark-select img,
+.ba-selecting .ba-bookmark-select img { visibility: hidden; }
+.ba-bookmark-row.ba-row-selected { border-color: #38705f; background: #17352f; }
+.ba-bookmark-row.ba-row-selected:hover { background: #21473d; }
+.ba-selection-bar {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #3b6959;
+  background: #18342b;
+}
+.ba-selection-count { flex: 1 1 auto; color: #c5f1dc; font-size: 12px; font-variant-numeric: tabular-nums; }
+.ba-selection-bar .ba-button { min-height: 28px; padding: 4px 8px; border-radius: 6px; }
+.ba-selection-bar .ba-icon-btn { width: 26px; height: 28px; min-height: 28px; border-radius: 6px; }
+.ba-bulk-field { display: grid; gap: 6px; margin: 12px 0; }
+.ba-bulk-preview-status { color: #b8dfcf; font-size: 12px; }
+.ba-rename-preview { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ba-rename-preview:empty { display: none; }
+.ba-rename-preview li { min-width: 0; display: grid; gap: 3px; padding-left: 10px; border-left: 2px solid #557b68; }
+.ba-rename-preview span { overflow-wrap: anywhere; }
+.ba-rename-preview span:first-child { color: #9dafaa; font-size: 11px; }
+.ba-rename-preview span:last-child { color: #eef8f1; font-size: 13px; }
+
+@media (pointer: coarse) {
+  .ba-select-bookmark { opacity: 1; pointer-events: auto; }
+  .ba-bookmark-select img { visibility: hidden; }
+}
+
 .ba-node-icon {
   width: 19px;
   height: 19px;
@@ -1065,6 +1107,7 @@
 }
 
 @media (max-width: 520px) {
+  .ba-selection-count { flex-basis: 100%; }
   .ba-titlebar { padding: 10px 12px; }
   .ba-navigation { gap: 0; padding: 4px 6px 0; }
   .ba-view-tab { gap: 4px; padding: 6px 4px; font-size: 12px; }
