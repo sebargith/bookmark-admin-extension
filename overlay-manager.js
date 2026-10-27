@@ -1183,7 +1183,6 @@
       els.activeFilters.append(button);
     }
     els.activeFilters.hidden = !els.activeFilters.childElementCount;
-    root.classList.toggle("ba-filtering", !els.activeFilters.hidden);
     if (!els.activeFilters.hidden) {
       const clear = document.createElement("button");
       clear.type = "button";

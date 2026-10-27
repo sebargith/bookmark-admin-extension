@@ -1190,15 +1190,11 @@
   .ba-layout,
   .ba-layout.ba-has-detail {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(240px, 45%) minmax(150px, 1fr);
+    grid-template-rows: minmax(240px, 45%) minmax(240px, 1fr);
     overflow-y: auto;
   }
 
   .ba-toolbar { max-height: 42vh; overflow-y: auto; }
-  .ba-filtering .ba-layout,
-  .ba-filtering .ba-layout.ba-has-detail {
-    grid-template-rows: minmax(130px, 35%) minmax(240px, 1fr);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

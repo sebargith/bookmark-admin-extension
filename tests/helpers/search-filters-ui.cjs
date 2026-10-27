@@ -80,10 +80,11 @@ module.exports = async function verifySearchFiltersUI({ page, fixture, artifacts
   equal(await chips.locator(".ba-filter-chip").count(), 5);
   equal(await domain.locator("option").count(), 6);
   await page.screenshot({ path: path.join(artifacts, "filters-desktop.png"), animations: "disabled" });
-  for (const width of [390, 320]) {
-    await page.setViewportSize({ width, height: 844 });
+  for (const [width, height] of [[390, 844], [320, 844], [390, 600]]) {
+    await page.setViewportSize({ width, height });
+    equal(await page.locator(".ba-folder-tree").evaluate((node) => node.clientHeight >= 96), true);
     await rows.first().scrollIntoViewIfNeeded();
-    await page.screenshot({ path: path.join(artifacts, `filters-${width}.png`), animations: "disabled" });
+    await page.screenshot({ path: path.join(artifacts, `filters-${width}-${height}.png`), animations: "disabled" });
     equal(await page.locator(".ba-toolbar").evaluate((node) => node.scrollWidth <= node.clientWidth + 1), true);
     equal(await chips.evaluate((node) => [...node.children].every((child) => child.scrollWidth <= child.clientWidth + 1)), true);
     equal(await page.locator(".ba-bookmark-list").evaluate((node) => node.clientHeight > 40), true);
