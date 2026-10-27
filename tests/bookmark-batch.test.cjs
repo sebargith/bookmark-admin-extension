@@ -142,3 +142,24 @@ test("undo storage failure prevents mutation and a later batch can retry", async
   fixture.chrome.storage.local.set = set;
   assert.equal((await fixture.context.applyBookmarkBatch(payload)).changed, 1);
 });
+
+test("interrupted batch-delete intent restores only missing original IDs without duplicating survivors", async () => {
+  const fixture = createFixture();
+  const nodes = ["210", "211"].map((id) => copy(fixture.find(id)));
+  fixture.storage.lastUndo = { action: "delete", verifyDeletedIds: true, label: "Interrupted deletion", snapshots:
+    nodes.map((node) => ({ node, parentId: node.parentId, index: node.index })) };
+  fixture.chrome.bookmarks.remove("210", () => {});
+  await fixture.context.undoLast();
+  assert.deepEqual(fixture.find("110").children.map((node) => node.url), nodes.map((node) => node.url));
+  assert.equal(fixture.find("110").children.filter((node) => node.id === "211").length, 1);
+});
+
+test("undoing an interrupted batch before any deletion leaves all native IDs and order unchanged", async () => {
+  const fixture = createFixture();
+  const before = copy(fixture.root);
+  fixture.storage.lastUndo = { action: "delete", verifyDeletedIds: true, label: "No deletion completed", snapshots:
+    ["210", "211"].map((id) => { const node = copy(fixture.find(id)); return { node, parentId: node.parentId, index: node.index }; }) };
+  await fixture.context.undoLast();
+  assert.deepEqual(fixture.root, before);
+  assert.deepEqual(fixture.mutations, []);
+});

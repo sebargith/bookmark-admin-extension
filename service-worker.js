@@ -1445,7 +1445,10 @@ async function executeBookmarkBatch(payload) {
     const snapshot = { action: payload.action, operationId, label: `${payload.action === "move" ? "Moved" : payload.action === "delete" ? "Deleted" : "Renamed"} ${items.length} bookmarks` };
     if (payload.action === "move") snapshot.moves = items.map(({ before }) => ({ id: before.id, oldParentId: before.parentId, oldIndex: before.index }));
     if (payload.action === "rename") snapshot.renames = items.map(({ before, after }) => ({ id: before.id, oldTitle: before.title, newTitle: after }));
-    if (payload.action === "delete") snapshot.snapshots = items.map(({ before }) => ({ node: before, parentId: before.parentId, index: before.index }));
+    if (payload.action === "delete") {
+      snapshot.verifyDeletedIds = true;
+      snapshot.snapshots = items.map(({ before }) => ({ node: before, parentId: before.parentId, index: before.index }));
+    }
     return snapshot;
   };
   const completed = [];
@@ -1776,6 +1779,8 @@ async function undoLast() {
   await withInternalMutation(async () => {
     if (undo.action === "delete") {
       for (const snapshot of undo.snapshots || []) {
+        // Persisted batch intent can include native deletes not reached before shutdown.
+        if (undo.verifyDeletedIds && await getNode(snapshot.node.id)) continue;
         await restoreDeletedNode(snapshot, restoreFallbackId);
       }
     }
