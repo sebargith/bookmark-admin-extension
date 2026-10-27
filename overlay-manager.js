@@ -1344,9 +1344,10 @@
   }
 
   function bulkPayload(action, form) {
-    const destination = form.querySelector(".ba-bulk-destination")?.value;
+    const select = form.querySelector(".ba-bulk-destination");
+    const destination = select?.value;
     return { action: action.type, ids: action.ids, expected: action.expected,
-      folderId: destination, destinationPath: destination ? folderTrail(destination).map((folder) => folder.id) : undefined,
+      folderId: destination, destinationPath: select?.destinationPaths?.get(destination),
       mode: form.querySelector(".ba-bulk-mode")?.value, text: form.querySelector(".ba-bulk-text")?.value,
       find: form.querySelector(".ba-bulk-find")?.value };
   }
@@ -1748,7 +1749,15 @@
   }
 
   function attachDestinationPicker(select) {
+    select.destinationPaths = new Map([...select.options].map((option) => [option.value, folderTrail(option.value).map((folder) => folder.id)]));
+    const labels = new Map();
+    for (const option of select.options) labels.set(option.textContent, (labels.get(option.textContent) || 0) + 1);
+    for (const option of select.options) {
+      if (labels.get(option.textContent) > 1) option.textContent += ` [folder ID: ${option.value}]`;
+    }
     const options = [...select.options].map((option) => ({ value: option.value, label: option.textContent }));
+    let chosen = select.value;
+    let filtering = false;
     const search = document.createElement("input");
     search.type = "search";
     search.className = "ba-input ba-destination-search";
@@ -1761,18 +1770,19 @@
     select.after(path);
     const update = () => {
       select.disabled = !select.options.length;
-      path.textContent = select.selectedOptions[0]?.textContent || "No matching writable folders.";
+      path.textContent = select.selectedOptions[0]?.textContent || (select.options.length ? "Choose a destination folder." : "No matching writable folders.");
     };
     search.addEventListener("input", () => {
-      const previous = select.value;
       const query = search.value.trim().toLowerCase();
       select.replaceChildren(...options.filter((option) => option.label.toLowerCase().includes(query))
         .map((option) => new Option(option.label, option.value)));
-      if ([...select.options].some((option) => option.value === previous)) select.value = previous;
+      select.value = chosen;
       update();
+      filtering = true;
       select.dispatchEvent(new Event("change"));
+      filtering = false;
     });
-    select.addEventListener("change", update);
+    select.addEventListener("change", () => { if (!filtering && select.value) chosen = select.value; update(); });
     update();
     return search;
   }
@@ -1856,7 +1866,7 @@
     try {
       const result = action.type === "create" ? await send("createFolder", { parentId: action.id, title }) :
         await send("applyNodeAction", { action: action.type, id: action.id, title, folderId, expected: action.expected,
-          destinationPath: folderId ? folderTrail(folderId).map((folder) => folder.id) : undefined, confirmed: true });
+          destinationPath: form.querySelector("select").destinationPaths?.get(folderId), confirmed: true });
       if (action.type === "create") {
         state.selectedFolderId = result.folder.id;
         state.selectedByView[state.view] = result.folder.id;

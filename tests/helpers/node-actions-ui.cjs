@@ -8,6 +8,10 @@ module.exports = async function verifyNodeActionsUI({ page, fixture, artifacts }
   const originalRoot = copy(fixture.root);
   const originalStorage = copy(fixture.storage);
   const mutationCount = fixture.mutations.length;
+  fixture.find("100").children.push({ id: "action-twin", parentId: "100", title: "Research", index: 2, children: [] });
+  fixture.find("100").children.push({ id: "action-source", parentId: "100", title: "Source", index: 3, children: [] });
+  await page.reload();
+  await page.waitForFunction(() => document.querySelectorAll(".ba-bookmark-list .ba-bookmark-row").length === 2);
   const dialog = page.locator(".ba-action-dialog");
   const menu = page.locator(".ba-menu");
   const folderMenu = async (id, action, context = false) => {
@@ -47,11 +51,27 @@ module.exports = async function verifyNodeActionsUI({ page, fixture, artifacts }
   equal(await destination.locator('option[value="102"]').count(), 0);
   equal(await destination.locator('option[value="100"]').count(), 0);
   equal(await destination.locator('option[value="400"]').count(), 0);
+  const twinLabels = await destination.locator('option[value="action-twin"]').allTextContents();
+  equal(twinLabels.length, 1);
+  // Both same-path folders must be offered when moving an unrelated source.
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await folderMenu("action-source", "Move folder");
+  equal(await destination.locator('option[value="102"]').innerText().then((text) => text.includes("folder ID: 102")), true);
+  equal(await destination.locator('option[value="action-twin"]').innerText().then((text) => text.includes("folder ID: action-twin")), true);
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await folderMenu("102", "Move folder");
+  await destination.selectOption("111");
   const find = dialog.getByRole("searchbox", { name: "Find destination folder", exact: true });
   await find.fill("no matching synthetic destination");
   equal(await destination.isDisabled(), true);
   equal(await dialog.getByRole("button", { name: "Move", exact: true }).isDisabled(), true);
-  await find.fill("Other bookmarks");
+  await find.fill("");
+  equal(await destination.inputValue(), "111");
+  await find.fill("Mobile");
+  equal(await destination.inputValue(), "");
+  equal(await dialog.getByRole("button", { name: "Move", exact: true }).isDisabled(), true);
+  await find.fill("");
+  equal(await destination.inputValue(), "111");
   await destination.selectOption("2");
   equal(await dialog.locator(".ba-destination-path").innerText(), "Other bookmarks");
   await page.setViewportSize({ width: 390, height: 844 });
@@ -62,6 +82,23 @@ module.exports = async function verifyNodeActionsUI({ page, fixture, artifacts }
   await loaded(() => page.locator(".ba-undo").click());
   equal(fixture.find("102").parentId, "100");
   await page.setViewportSize({ width: 1440, height: 1000 });
+
+  await folderMenu("102", "Move folder");
+  await destination.selectOption("111");
+  const beforeDestinationMove = copy(fixture.root);
+  const movedDestination = fixture.find("111");
+  fixture.find("1").children = fixture.find("1").children.filter((node) => node.id !== "111");
+  fixture.find("1").children.forEach((node, index) => { node.index = index; });
+  movedDestination.parentId = "2";
+  movedDestination.index = fixture.find("2").children.length;
+  fixture.find("2").children.push(movedDestination);
+  await loaded(() => page.evaluate(() => globalThis.__bookmarkChange()));
+  await dialog.getByRole("button", { name: "Move", exact: true }).click();
+  await dialog.locator(".ba-action-error").filter({ hasText: /Destination moved/ }).waitFor();
+  equal(fixture.find("102").parentId, "100");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  fixture.root.children = beforeDestinationMove.children;
+  await loaded(() => page.evaluate(() => globalThis.__bookmarkChange()));
 
   await folderMenu("102", "Delete folder");
   equal(await dialog.locator(".ba-action-copy").innerText().then((text) => /0 subfolders and 1 bookmarks/.test(text)), true);

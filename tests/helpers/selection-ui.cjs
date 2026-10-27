@@ -127,10 +127,12 @@ module.exports = async function verifySelectionUI({ page, fixture, artifacts }) 
   await checkbox("selection-1").click();
   await checkbox("selection-0").click();
   await openAction("move");
+  await dialog.getByRole("combobox", { name: "Destination folder", exact: true }).selectOption("102");
   await dialog.getByRole("searchbox", { name: "Find destination folder", exact: true }).fill("no matching destination");
   equal(await dialog.getByRole("combobox", { name: "Destination folder", exact: true }).isDisabled(), true);
   equal(await dialog.getByRole("button", { name: "Move", exact: true }).isDisabled(), true);
   await dialog.getByRole("searchbox", { name: "Find destination folder", exact: true }).fill("");
+  equal(await dialog.getByRole("combobox", { name: "Destination folder", exact: true }).inputValue(), "102");
   await dialog.getByRole("combobox", { name: "Destination folder", exact: true }).selectOption("102");
   await waitSubmit();
   equal(await dialog.locator(".ba-bulk-preview-status").innerText(), "2 will change");
