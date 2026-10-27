@@ -385,3 +385,59 @@ These checks use isolated Chrome rendering and synthetic APIs, not a loaded
 extension or personal profile. Native bookmark events/MV3 lifecycle, screen
 readers, touch hardware, large-library performance and security certification
 remain unverified. No personal bookmark data was used or committed.
+
+## Phase 8: Consistent actions and recovery
+
+Worker commit `0ae5d47` adds queued single-node rename/move/delete requests with
+complete subtree snapshots (up to 10,000 nodes), destination ancestry validation,
+read-only/protected-node checks and persisted undo intent. Native failures restore
+the prior undo when the request still owns it. Delete recovery retains capture
+identity and checks original IDs to avoid duplicating surviving items.
+
+Interface commit `21c791f` replaces native prompts for create/rename/move/delete
+with in-manager dialogs. Single, batch and Library-transfer destinations share a
+searchable native-ID picker with full path feedback and explicit empty states.
+Menus use stable action groups; right-click and option buttons share their action
+definitions. Folder deletion shows its subject and descendant counts, with Cancel
+focused first. Footer feedback names Undo's action and prevents repeated clicks
+while that manager's undo request is pending.
+
+Regression commits `a2a04b2` and `98faa50` cover dialog cancellation, menu entry
+point parity, readonly/current/self/descendant destination exclusions, shared
+picker empty-state restoration, stale child edits, native move/delete/rename,
+focus recovery, undo and narrow dialog layout. Main verification passes 68 unit
+tests and 406 browser assertions without page errors, using isolated Chrome and
+synthetic bookmark APIs. Artifacts are outside the packaged repository in
+`phase-8-initial` in the verification workspace.
+
+Initial independent scores: functionality 8.5/10, visuals 8/10, usability 7.5/10;
+arithmetic overall 8/10. The evaluator independently passed 68 unit tests and
+406 browser assertions without page errors and checked worker failure recovery,
+counts, cancellation, stale confirmation, focus, narrow layout and screenshots.
+Two P2 findings: picker filtering could substitute the chosen destination, and
+same-name sibling folders could have indistinguishable full path labels.
+
+Optional revision 1 preserves the chosen native ID independently of filtering,
+requires a valid selection before enabling Move and restores the chosen ID when
+it becomes visible again. Colliding labels receive native-ID suffixes. Single
+and batch pickers also retain their opening destination ancestry for validation
+after external changes. New tests verify exact restored IDs in all three picker
+types, nonempty filters without a selected destination, colliding paths and stale
+destinations after manager refresh. All 68 unit tests and 416 browser assertions
+pass without page errors; artifacts: `phase-8-revision-1`.
+
+Final independent scores: functionality 9/10, visuals 8/10, usability 8.5/10;
+arithmetic overall 8.5/10. Both original P2 findings were independently resolved
+after one optional revision (`b19942a`). The evaluator independently passed all
+68 unit tests and 416 browser assertions without page errors, inspected revision
+screenshots and confirmed restoration/disabled states in all three picker types.
+An additional bulk-move probe verified that a destination moved externally during
+confirmation is rejected after refresh without moving selection or replacing
+undo. Evidence: `phase-8-evaluator-revision-1`. No second revision was needed.
+
+Nonblocking polish: extremely long paths can push action buttons below the fold
+at 320x568; scrolling remains available. This is recorded for step 9. Verification
+uses real Chrome rendering with synthetic APIs, not a loaded extension. No
+personal profile, personal bookmark data or external-page access was used.
+Native API integration, MV3 lifecycle, screen readers, touch hardware and security
+certification remain unverified.

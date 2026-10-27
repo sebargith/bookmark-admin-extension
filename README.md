@@ -75,6 +75,14 @@ Selections and preview drafts remain in memory and are not restored on reopen. B
 
 Batch-delete undo verifies whether each original bookmark ID still exists before restoring it. This avoids duplicate survivors when recovering persisted intent from an interrupted deletion. Actual browser termination and MV3 lifecycle behavior still require loaded-extension testing.
 
+Folder and bookmark actions open inside the manager rather than using browser prompts. Create and Rename use a name field; Move provides a searchable picker with full destination paths and native folder IDs, so equal names remain distinct. The same picker search is available for batch moves and Library transfers. Current parents, self/descendant destinations and read-only folders are excluded where applicable. Delete names the target and counts contained subfolders/bookmarks, with Cancel focused initially. Single-node rename/move/delete rejects changes to its frozen subtree or destination ancestry before applying the native action; cancel and reopen stale confirmations. These checks are conflict detection, not atomic locking against Chrome.
+
+The footer names the action available to Undo. Only the latest supported action can be undone; a later mutation replaces it. Deleted items are recreated with new native IDs, while URL-based notes remain available. In short windows, scrolling may be needed to reach all dialog controls. No additional permissions or remote requests are introduced by these actions.
+
+Filtering destination choices never substitutes another folder: the chosen ID is remembered, Move is disabled while that choice is hidden, and clearing the search restores it. Identical full paths receive native-folder-ID suffixes to distinguish their options. Single-node and batch destination ancestry is captured when the picker opens, so moving a destination while confirming is rejected. Single-node subtree confirmations support up to 10,000 nodes; larger actions are rejected without mutation.
+
+Phase-eight actions/recovery evaluation: 8.5/10 after one optional revision, with 68 passing unit tests and 416 passing browser assertions using synthetic data. Native loaded-extension integration remains unverified. See [EVALUATION.md](EVALUATION.md).
+
 Phase-one independent evaluation: 7.3/10 after one revision. See [EVALUATION.md](EVALUATION.md) for findings, verification, and remaining test limits.
 
 Phase-two compact-list evaluation: 8.3/10 on its first review, with 23 passing unit tests and 61 passing browser assertions using synthetic data.

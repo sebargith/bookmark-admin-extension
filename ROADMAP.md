@@ -164,16 +164,30 @@ All 56 unit tests and 378 browser assertions pass with synthetic data; the
 evaluator verified folder access after external rename and actual resizing.
 See [EVALUATION.md](EVALUATION.md) for evidence and remaining limitations.
 
-## 8. Consistent actions and recovery (planned)
+## 8. Consistent actions and recovery (complete)
 
 Align context menus and option buttons. Improve target-folder picking, destructive
 action feedback, and discoverable undo.
+
+Implemented in-manager create/rename/move/delete dialogs, stable contextual action
+groups, a shared searchable destination picker for single/batch/Library moves,
+full destination feedback and native-ID suffixes for colliding paths. Filtering
+retains the chosen ID without substituting another folder. Confirmations show
+folder deletion counts and focus Cancel. Single-node actions validate frozen
+subtree snapshots and destination ancestry; failure preserves recoverable undo.
+The footer names the available undo and guards repeated clicks in that manager.
+
+Independently accepted at 8.5/10 after one optional revision from 8/10. Both
+destination identity/label findings were resolved. All 68 unit tests and 416
+browser assertions pass with synthetic APIs, plus independent stale-destination
+probes. See [EVALUATION.md](EVALUATION.md) for evidence and integration limits.
 
 ## 9. Visual refinement and accessibility (planned)
 
 Refine dark surfaces, restrained accents, focus states, contrast, keyboard access,
 motion preferences, and layouts across window sizes. Give warning and dead-link
 indicators distinct shapes as well as colors.
+Keep dialog action controls easy to reach with very long paths in short windows.
 
 ## Evaluation for this delivery
 

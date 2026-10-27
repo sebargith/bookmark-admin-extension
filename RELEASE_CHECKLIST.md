@@ -30,6 +30,12 @@ Before publishing changes:
   - preview/cancel/apply batch rename, move and delete, then verify native order and undo
   - open More with Enter, navigate actions with arrows, and verify Escape/Tab and failed-submit focus recovery
   - edit notes
+  - create/rename folders and bookmarks with in-manager dialogs; cancel with Escape and backdrop
+  - search move destinations, distinguish equal folder names by path, and verify no-match states
+  - verify current-parent/self/descendant/read-only destinations are excluded as appropriate
+  - confirm folder deletion counts, cancel it, then delete and undo a nested folder
+  - change a target subtree or move a destination in Chrome while confirming; verify rejection
+  - verify the footer names the available undo and repeated clicks do not repeat restoration
   - verify the displayed search scope follows the selected view and folder
   - combine domain, duplicate, date, status and text filters; remove them individually and clear all
   - verify duplicate counts are scoped and hidden selections do not return when filters are cleared
