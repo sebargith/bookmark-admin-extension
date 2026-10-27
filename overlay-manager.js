@@ -1130,6 +1130,7 @@
       const libraryId = state.data.managedRoot.id;
       for (const destination of state.data.folders) {
         if (state.data.readOnlyNodeIds.includes(destination.id)) continue;
+        if (destination.id === (bookmark ? bookmark.folderId : folder.id)) continue;
         const trail = folderTrail(destination.id);
         if (!trail.some((item) => item.id === libraryId)) continue;
         if (state.action.expectedIds.some((id) => trail.some((item) => item.id === id))) continue;

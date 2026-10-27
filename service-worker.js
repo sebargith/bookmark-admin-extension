@@ -1081,6 +1081,9 @@ function validateSavedLibraryMove(payload, context) {
     throw new Error("This capture changed. Cancel and review it before moving.");
   }
   if (!ids.length) throw new Error("This saved window is empty.");
+  if (ids.every((id) => context.nodeMap.get(id)?.parentId === target.id)) {
+    throw new Error("Choose a different destination. These items are already in that folder.");
+  }
   for (const id of ids) {
     const item = context.nodeMap.get(id);
     if (!item || (payload.bookmarkId && !item.url) || !isDescendantOrSelf(id, node.id, context.nodeMap) ||

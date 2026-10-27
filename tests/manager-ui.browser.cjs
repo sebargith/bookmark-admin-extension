@@ -264,6 +264,18 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     assert.equal(await page.locator('[data-folder-id="110"] .ba-name').evaluate((node) => node === document.activeElement), true);
     await page.locator(".ba-undo").click();
     await waitRows(2);
+    await fixture.context.bulkMove({ ids: ["110"], folderId: "100" });
+    const beforeLibraryMove = await page.evaluate(() => globalThis.__managerReplies);
+    await page.evaluate(() => globalThis.__bookmarkChange());
+    await page.waitForFunction((before) => globalThis.__managerReplies > before, beforeLibraryMove);
+    await page.locator(".ba-capture-bar").getByRole("button", { name: "Move to Library", exact: true }).click();
+    assert.equal(await actionDialog.locator('select option[value="110"]').count(), 0);
+    await actionDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await actionDialog.waitFor({ state: "hidden" });
+    const beforeLibraryUndo = await page.evaluate(() => globalThis.__managerReplies);
+    await page.locator(".ba-undo").click();
+    await page.waitForFunction((before) => globalThis.__managerReplies > before, beforeLibraryUndo);
+    assert.equal(fixture.find("110").parentId, "1");
     await openCapture();
     const oldUrl = fixture.find("211").url;
     fixture.find("211").url = "https://example.test/changed-before-confirmation";
@@ -286,7 +298,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await waitRows(3);
     await view("Library");
     await waitRows(2);
-    assertions += 28;
+    assertions += 30;
     assert.equal(await page.locator(".ba-detail").isVisible(), false);
     const fullListWidth = (await page.locator(".ba-bookmark-list").boundingBox()).width;
     const before = copy(fixture.root);

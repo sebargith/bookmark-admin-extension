@@ -168,6 +168,21 @@ test("capture transfer validates scope, destination, protection and empty folder
   await assert.rejects(fixture.context.moveSavedItemsToLibrary({ captureId: "110", folderId: "101" }), /empty/);
 });
 
+test("a capture already inside Library cannot transfer contents back into itself or reorder an unmoved bookmark", async () => {
+  const fixture = createFixture();
+  await fixture.context.getManagerState();
+  await fixture.context.bulkMove({ ids: ["110"], folderId: "100" });
+  const before = copy(fixture.root);
+  const undo = copy(fixture.storage.lastUndo);
+  fixture.mutations.length = 0;
+  for (const bookmarkId of [undefined, "210"]) {
+    await assert.rejects(fixture.context.moveSavedItemsToLibrary({ captureId: "110", folderId: "110", bookmarkId }), /different destination/);
+  }
+  assert.deepEqual(fixture.root, before);
+  assert.deepEqual(fixture.storage.lastUndo, undo);
+  assert.deepEqual(fixture.mutations, []);
+});
+
 test("undoing deletion restores a renamed capture's local identity with its new native ID", async () => {
   const fixture = createFixture();
   await fixture.context.getManagerState();
