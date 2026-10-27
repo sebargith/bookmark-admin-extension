@@ -1,5 +1,6 @@
 (function bookmarkAdminOverlay() {
   const ROOT_ID = "bookmark-admin-overlay";
+  const previousFocus = document.activeElement;
   const DEFAULT_FOLDER_TITLE = "All";
   const VIEW_LABELS = { library: "Library", windows: "Saved Windows", all: "All Bookmarks" };
   const IS_STANDALONE = window.location.href.split(/[?#]/, 1)[0] === chrome.runtime.getURL("manager.html");
@@ -77,7 +78,7 @@
   }
   root.innerHTML = `
     <div class="ba-backdrop" data-close="true"></div>
-    <section class="ba-window" role="dialog" aria-label="Bookmark Admin">
+    <section class="ba-window" role="dialog" aria-modal="true" aria-label="Bookmark Admin">
       <header class="ba-titlebar" data-drag="true">
         <div class="ba-mark" aria-hidden="true"><img src="${ICONS.app}" alt=""></div>
         <div class="ba-title">
@@ -220,7 +221,7 @@
   };
 
   bindEvents();
-  load().catch(showError);
+  load().then(() => els.search.focus({ preventScroll: true })).catch(showError);
 
   function bindEvents() {
     els.newFolder.disabled = true;
@@ -981,9 +982,10 @@
     indicator.setAttribute("role", "img");
     indicator.setAttribute("aria-label", label);
     indicator.title = label;
-    const icon = document.createElement("img");
-    icon.src = ICONS.check;
-    icon.alt = "";
+    const icon = document.createElement("span");
+    icon.className = "ba-status-symbol";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = status.state === "dead" ? "\u00d7" : "!";
     indicator.append(icon);
     return indicator;
   }
@@ -1130,8 +1132,11 @@
       }
       return;
     }
-    if (!state.detailDrawer || !root.isConnected || els.detail.contains((shadow || document).activeElement)) return;
-    els.detail.querySelector(state.detailMode === "notes" ? "textarea" : ".ba-detail-title")?.focus();
+    const active = (shadow || document).activeElement;
+    if (!root.isConnected || els.menu.contains(active)) return;
+    if (state.detailDrawer) {
+      if (!els.detail.contains(active)) els.detail.querySelector(state.detailMode === "notes" ? "textarea" : ".ba-detail-title")?.focus();
+    } else if (!els.win.contains(active)) els.search.focus({ preventScroll: true });
   }
 
   function fullDate(value) {
@@ -1364,6 +1369,7 @@
       title: bookmark.title || "", url: bookmark.url, index: bookmark.index })), returnFocus: shadow?.activeElement || document.activeElement, previewSequence: 0 };
     state.action = action;
     els.actionLayer.innerHTML = `<form class="ba-action-dialog" role="dialog" aria-modal="true" aria-labelledby="ba-action-title" tabindex="-1">
+      <div class="ba-action-body">
       <h2 id="ba-action-title"></h2><p class="ba-action-copy"></p>
       <label class="ba-bulk-field ba-destination-field" hidden><span>Destination folder</span><select class="ba-select ba-bulk-destination" aria-label="Destination folder"></select></label>
       <div class="ba-bulk-rename-fields" hidden>
@@ -1373,6 +1379,7 @@
       </div>
       <p class="ba-bulk-preview-status" role="status" aria-live="polite"></p><ul class="ba-rename-preview"></ul>
       <p class="ba-action-error" role="alert"></p>
+      </div>
       <div class="ba-action-buttons"><button class="ba-button ba-action-cancel" type="button">Cancel</button><button class="ba-button ba-action-submit" type="submit" disabled></button></div>
     </form>`;
     const form = els.actionLayer.querySelector("form");
@@ -1490,10 +1497,12 @@
     walk(folder, (item) => { if (item.id !== folder.id) state.action.expectedContents.push([item.id, item.parentId, item.url || null]); });
     state.action.expectedIds = bookmark ? [bookmark.id] : (folder.children || []).map((item) => item.id);
     els.actionLayer.innerHTML = `<form class="ba-action-dialog" role="dialog" aria-modal="true" aria-labelledby="ba-action-title" tabindex="-1">
+      <div class="ba-action-body">
       <h2 id="ba-action-title"></h2><p class="ba-action-subject"></p><p class="ba-action-copy"></p>
       <label class="ba-action-field" hidden><span></span><select class="ba-select" aria-label="Destination folder"></select></label>
       <label class="ba-action-name" hidden><span>Name</span><input class="ba-input" aria-label="Capture name" maxlength="300"></label>
       <p class="ba-action-error" role="alert"></p>
+      </div>
       <div class="ba-action-buttons"><button class="ba-button ba-action-cancel" type="button">Cancel</button><button class="ba-button ba-blue ba-action-submit" type="submit"></button></div>
     </form>`;
     const form = els.actionLayer.querySelector("form");
@@ -1594,9 +1603,12 @@
   }
 
   function showMenu(event, items) {
+    hideMenu();
     const source = event.currentTarget || event.target;
     const anchor = source?.matches?.("button,input,[tabindex]") ? source : source?.querySelector?.(".ba-icon-btn,button");
     state.menuAnchor = anchor || els.search;
+    state.menuAnchor.setAttribute("aria-haspopup", "true");
+    state.menuAnchor.setAttribute("aria-expanded", "true");
     els.menu.textContent = "";
     for (const item of items) {
       if (item.separator) {
@@ -1631,6 +1643,7 @@
 
   function hideMenu(restoreFocus = false) {
     els.menu.classList.add("ba-hidden");
+    state.menuAnchor?.setAttribute("aria-expanded", "false");
     if (restoreFocus && state.menuAnchor?.isConnected && state.menuAnchor.getClientRects().length && !state.menuAnchor.disabled) state.menuAnchor.focus({ preventScroll: true });
   }
 
@@ -1811,10 +1824,12 @@
     const action = { kind: "node", type, id, expected, returnFocus: (shadow || document).activeElement };
     state.action = action;
     els.actionLayer.innerHTML = `<form class="ba-action-dialog" role="dialog" aria-modal="true" aria-labelledby="ba-action-title" tabindex="-1">
+      <div class="ba-action-body">
       <h2 id="ba-action-title"></h2><p class="ba-action-subject"></p><p class="ba-action-copy"></p>
       <label class="ba-action-name" hidden><span>Name</span><input class="ba-input" aria-label="Name" maxlength="300"></label>
       <label class="ba-action-field" hidden><span>Destination folder</span><select class="ba-select" aria-label="Destination folder"></select></label>
       <p class="ba-action-error" role="alert"></p>
+      </div>
       <div class="ba-action-buttons"><button class="ba-button ba-action-cancel" type="button">Cancel</button><button class="ba-button ba-action-submit" type="submit"></button></div>
     </form>`;
     const form = els.actionLayer.querySelector("form");
@@ -1993,8 +2008,9 @@
       } else openBulkAction(event.key === "Delete" ? "delete" : "rename").catch(showError);
       return;
     }
-    if (event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey && (state.action || state.detailDrawer)) {
-      const surface = state.action ? els.actionLayer : els.detail;
+    if (event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey &&
+        (state.action || state.detailDrawer || els.menu.classList.contains("ba-hidden"))) {
+      const surface = state.action ? els.actionLayer : state.detailDrawer ? els.detail : els.win;
       const controls = [...surface.querySelectorAll("button, textarea, input, select, a[href], [tabindex]")]
         .filter((node) => node.tabIndex >= 0 && !node.disabled && node.getClientRects().length);
       const index = controls.indexOf((shadow || document).activeElement);
@@ -2038,6 +2054,7 @@
     clearTimeout(state.refreshTimer);
     clearTimeout(state.renamePreviewTimer);
     host.remove();
+    if (previousFocus?.isConnected && typeof previousFocus.focus === "function") previousFocus.focus({ preventScroll: true });
   }
 
   function countBookmarks(folder) {
