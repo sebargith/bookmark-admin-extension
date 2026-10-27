@@ -48,7 +48,8 @@
     actionBusy: false,
     selectedBookmarks: new Set(),
     selectionAnchor: null,
-    renamePreviewTimer: null
+    renamePreviewTimer: null,
+    menuAnchor: null
   };
 
   const existing = document.getElementById(ROOT_ID);
@@ -144,8 +145,8 @@
             <button class="ba-button" data-bulk-action="move" type="button"><img src="${ICONS.folderOpen}" alt=""><span>Move</span></button>
             <button class="ba-button" data-bulk-action="rename" type="button">Rename</button>
             <button class="ba-button ba-danger" data-bulk-action="delete" type="button">Delete</button>
-            <button class="ba-icon-btn ba-selection-more" type="button" title="More selected actions" aria-label="More selected actions">...</button>
-            <button class="ba-icon-btn ba-selection-clear" type="button" title="Clear selection" aria-label="Clear selection">x</button>
+            <button class="ba-icon-btn ba-selection-more" data-selection-control="more" type="button" title="More selected actions" aria-label="More selected actions">...</button>
+            <button class="ba-icon-btn ba-selection-clear" data-selection-control="clear" type="button" title="Clear selection" aria-label="Clear selection">x</button>
           </section>
           <section class="ba-capture-bar" aria-label="Saved window" hidden></section>
           <div class="ba-bookmark-list"></div>
@@ -242,6 +243,22 @@
       else clearBookmarkSelection();
     });
     els.selectionClear.addEventListener("click", () => clearBookmarkSelection(true));
+    els.menu.setAttribute("role", "group");
+    els.menu.setAttribute("aria-label", "Actions");
+    els.menu.addEventListener("keydown", (event) => {
+      const controls = [...els.menu.querySelectorAll("button:not(:disabled)")];
+      const index = controls.indexOf((shadow || document).activeElement);
+      let next;
+      if (event.key === "ArrowDown") next = (index + 1) % controls.length;
+      if (event.key === "ArrowUp") next = (index + controls.length - 1) % controls.length;
+      if (event.key === "Home") next = 0;
+      if (event.key === "End") next = controls.length - 1;
+      if (next !== undefined && controls.length) {
+        event.preventDefault();
+        event.stopPropagation();
+        controls[next].focus();
+      } else if (event.key === "Tab") hideMenu(true);
+    });
     for (const button of els.selectionBar.querySelectorAll("[data-bulk-action]")) {
       button.addEventListener("click", () => openBulkAction(button.dataset.bulkAction).catch(showError));
     }
@@ -368,11 +385,11 @@
 
   function captureNavigationFocus() {
     const active = shadow?.activeElement || document.activeElement;
-    if (active === els.selectAll) return { kind: "list-control" };
+    if (active === els.selectAll || active === els.undo) return { kind: "list-control" };
     const bookmarkRow = active?.closest(".ba-bookmark-row");
     if (bookmarkRow) return { kind: "bookmark", id: bookmarkRow.dataset.bookmarkId,
       control: active.matches(".ba-select-bookmark") ? ".ba-select-bookmark" : active.matches(".ba-icon-btn") ? ".ba-icon-btn" : ".ba-bookmark-title" };
-    if (els.selectionBar.contains(active)) return { kind: "selection", action: active.dataset.bulkAction,
+    if (els.selectionBar.contains(active)) return { kind: "selection", action: active.dataset.bulkAction || active.dataset.selectionControl,
       id: state.selectionAnchor || [...state.selectedBookmarks][0] };
     if (els.captureBar.contains(active) && active.dataset.captureAction) {
       return { kind: "capture", id: state.selectedFolderId, action: active.dataset.captureAction };
@@ -394,7 +411,7 @@
     if (memory.kind === "list-control") { (els.selectAll.disabled ? els.search : els.selectAll).focus({ preventScroll: true }); return; }
     if (memory.kind === "bookmark" || memory.kind === "selection") {
       const button = memory.kind === "selection" && memory.action && !els.selectionBar.hidden &&
-        els.selectionBar.querySelector(`[data-bulk-action="${memory.action}"]`);
+        els.selectionBar.querySelector(`[data-bulk-action="${memory.action}"], [data-selection-control="${memory.action}"]`);
       const row = memory.id && els.bookmarkList.querySelector(`[data-bookmark-id="${CSS.escape(memory.id)}"]`);
       const target = button && !button.disabled ? button : row?.querySelector(memory.control || ".ba-select-bookmark") || els.selectAll;
       (target.disabled ? els.search : target).focus({ preventScroll: true });
@@ -1337,6 +1354,7 @@
       form.querySelector(".ba-action-error").textContent = error.message;
       form.querySelector(".ba-action-submit").disabled = true;
       await load(error.message).catch(showError);
+      if (state.action === action && form.isConnected) form.querySelector(".ba-action-cancel").focus();
     }
   }
 
@@ -1463,10 +1481,14 @@
       controls.forEach((control) => { control.disabled = false; });
       form.querySelector(".ba-action-error").textContent = error.message;
       if (action.type === "move") await load(error.message).catch(showError);
+      if (state.action === action && form.isConnected) form.querySelector(".ba-action-cancel").focus();
     }
   }
 
   function showMenu(event, items) {
+    const source = event.currentTarget || event.target;
+    const anchor = source?.matches?.("button,input,[tabindex]") ? source : source?.querySelector?.(".ba-icon-btn,button");
+    state.menuAnchor = anchor || els.search;
     els.menu.textContent = "";
     for (const item of items) {
       if (item.separator) {
@@ -1478,7 +1500,7 @@
       button.textContent = item.label;
       if (item.danger) button.className = "ba-danger";
       button.addEventListener("click", async () => {
-        hideMenu();
+        hideMenu(true);
         try {
           await item.action();
         } catch (error) {
@@ -1489,12 +1511,19 @@
     }
     els.menu.classList.remove("ba-hidden");
     const rect = els.menu.getBoundingClientRect();
-    els.menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - rect.width - 8))}px`;
-    els.menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - rect.height - 8))}px`;
+    const keyboard = event.type === "click" && event.detail === 0 || event.type === "contextmenu" && !event.clientX && !event.clientY;
+    const origin = state.menuAnchor.getBoundingClientRect();
+    const x = keyboard ? origin.left : event.clientX;
+    let y = keyboard ? origin.bottom + 4 : event.clientY;
+    if (keyboard && y + rect.height > window.innerHeight - 8) y = origin.top - rect.height - 4;
+    els.menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
+    els.menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+    if (keyboard) els.menu.querySelector("button:not(:disabled)")?.focus();
   }
 
-  function hideMenu() {
+  function hideMenu(restoreFocus = false) {
     els.menu.classList.add("ba-hidden");
+    if (restoreFocus && state.menuAnchor?.isConnected && state.menuAnchor.getClientRects().length && !state.menuAnchor.disabled) state.menuAnchor.focus({ preventScroll: true });
   }
 
   function toggleFolder(id) {
@@ -1761,7 +1790,7 @@
     event.preventDefault();
     event.stopPropagation();
     if (state.action) closeCaptureAction();
-    else if (!els.menu.classList.contains("ba-hidden")) hideMenu();
+    else if (!els.menu.classList.contains("ba-hidden")) hideMenu(true);
     else if (state.detailBookmark) closeDetails().catch(showError);
     else if (state.selectedBookmarks.size) clearBookmarkSelection(true);
     else closeOverlay().catch(showError);
