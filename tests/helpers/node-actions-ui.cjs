@@ -21,6 +21,18 @@ module.exports = async function verifyNodeActionsUI({ page, fixture, artifacts }
     await action();
     await page.waitForFunction((old) => globalThis.__managerReplies > old, before);
   };
+  const bookmarkRow = page.locator('.ba-bookmark-list [data-bookmark-id="200"]');
+  await bookmarkRow.locator(".ba-icon-btn").click();
+  const optionLabels = await menu.getByRole("button").allTextContents();
+  await page.keyboard.press("Escape");
+  await bookmarkRow.click({ button: "right" });
+  equal(JSON.stringify(await menu.getByRole("button").allTextContents()), JSON.stringify(optionLabels));
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "New folder", exact: true }).click();
+  await dialog.getByRole("textbox", { name: "Name", exact: true }).fill("Cancelled folder");
+  await page.keyboard.press("Escape");
+  equal(fixture.mutations.length, mutationCount);
+  equal(await page.locator(".ba-action-dialog").count(), 0);
   await folderMenu("102", "Rename", true);
   equal(await dialog.getByRole("heading").innerText(), "Rename folder");
   await dialog.getByRole("textbox", { name: "Name", exact: true }).fill("Reviewed research");

@@ -253,6 +253,11 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await page.locator(".ba-list-title").filter({ hasText: /^nuevo6$/ }).waitFor();
     await page.locator('.ba-bookmark-list [data-bookmark-id="210"] .ba-icon-btn').click();
     await page.locator(".ba-menu button", { hasText: /^Move to Library$/ }).click();
+    await actionDialog.getByRole("searchbox", { name: "Find destination folder", exact: true }).fill("no matching destination");
+    assert.equal(await actionDialog.getByRole("combobox", { name: "Destination folder", exact: true }).isDisabled(), true);
+    assert.equal(await actionDialog.getByRole("button", { name: "Move", exact: true }).isDisabled(), true);
+    assertions += 2;
+    await actionDialog.getByRole("searchbox", { name: "Find destination folder", exact: true }).fill("");
     await actionDialog.getByRole("combobox", { name: "Destination folder", exact: true }).selectOption("102");
     assert.deepEqual(await actionDialog.locator("select option").evaluateAll((items) => items.map((item) => item.value)), ["100", "101", "102"]);
     await actionDialog.getByRole("button", { name: "Move", exact: true }).click();
