@@ -1367,6 +1367,103 @@ function bookmarkSelectionSnapshot(node) {
   return { id: node.id, parentId: node.parentId, title: node.title || "", url: node.url, index: node.index };
 }
 
+function validateNodeAction(payload, context) {
+  if (payload.confirmed !== true || !["rename", "move", "delete"].includes(payload.action) ||
+      typeof payload.id !== "string" || !payload.id) {
+    throw new Error("Confirm a valid bookmark or folder action first.");
+  }
+  const node = context.nodeMap.get(payload.id);
+  if (!node || !canRemoveSubtree(node, context)) {
+    throw new Error("The subtree is missing, protected or read-only. Cancel and review it.");
+  }
+  const current = [];
+  walk(node, (child) => current.push({ ...bookmarkSelectionSnapshot(child), url: child.url ?? null }));
+  if (!Array.isArray(payload.expected) || !payload.expected.length || payload.expected.length > 10000 ||
+      current.length !== payload.expected.length || current.some((child, index) => {
+        const previous = payload.expected[index];
+        return !previous || ["id", "parentId", "title", "url", "index"].some((key) => child[key] !== previous[key]);
+      })) {
+    throw new Error("The subtree changed. Cancel and review it.");
+  }
+  let target;
+  let destinationPath;
+  if (payload.action === "move") {
+    target = writableFolder(payload.folderId, context);
+    if (target.id === node.parentId || isDescendantOrSelf(target.id, node.id, context.nodeMap)) {
+      throw new Error("Cannot move to the current parent, self or a descendant.");
+    }
+    destinationPath = [];
+    let ancestor = target;
+    while (ancestor && ancestor.id !== context.root.id) {
+      destinationPath.unshift(ancestor.id);
+      ancestor = context.nodeMap.get(ancestor.parentId);
+    }
+    if (payload.destinationPath !== undefined &&
+        JSON.stringify(payload.destinationPath) !== JSON.stringify(destinationPath)) {
+      throw new Error("Destination moved. Cancel and choose the folder again.");
+    }
+  }
+  let title;
+  if (payload.action === "rename") {
+    if (typeof payload.title !== "string") throw new Error("New title is required.");
+    title = safeTitle(payload.title);
+    if (!title || title.length > 1000) throw new Error("New title must contain between 1 and 1000 characters.");
+    if (title === node.title) throw new Error("No title would change.");
+  }
+  return { node, target, title, destinationPath };
+}
+
+function applyNodeAction(payload = {}) {
+  const request = clone(payload);
+  const task = bookmarkBatchQueue.then(() => executeNodeAction(request));
+  bookmarkBatchQueue = task.catch(() => {});
+  return task;
+}
+
+async function executeNodeAction(payload) {
+  const initial = await getBookmarkContext();
+  const plan = validateNodeAction(payload, initial);
+  // Also pin the destination during asynchronous intent storage when no path was supplied.
+  if (plan.destinationPath) payload.destinationPath = plan.destinationPath;
+  const previous = await storageGet({ [STORAGE_KEYS.UNDO]: null });
+  const operationId = `${Date.now()}-${Math.random()}`;
+  const undo = { action: payload.action, operationId, label: `${payload.action === "rename" ? "Renamed" : payload.action === "move" ? "Moved" : "Deleted"} item` };
+  if (payload.action === "rename") undo.renames = [{ id: plan.node.id, oldTitle: plan.node.title, newTitle: plan.title }];
+  if (payload.action === "move") undo.moves = [{ id: plan.node.id, oldParentId: plan.node.parentId, oldIndex: plan.node.index }];
+  if (payload.action === "delete") {
+    const records = await updateSavedWindowRecords(initial.root);
+    const ids = new Set(payload.expected.map((item) => item.id));
+    undo.verifyDeletedIds = true;
+    undo.snapshots = [{ node: clone(plan.node), parentId: plan.node.parentId, index: plan.node.index,
+      savedWindows: Object.fromEntries(Object.entries(records).filter(([id]) => ids.has(id))) }];
+  }
+  await setUndoSnapshot(undo);
+  let node;
+  try {
+    await withInternalMutation(async () => {
+      const current = validateNodeAction(payload, await getBookmarkContext());
+      if (payload.action === "rename") node = await chromeCall(chrome.bookmarks.update.bind(chrome.bookmarks), payload.id, { title: current.title });
+      if (payload.action === "move") node = await chromeCall(chrome.bookmarks.move.bind(chrome.bookmarks), payload.id, { parentId: current.target.id });
+      if (payload.action === "delete") {
+        const remove = current.node.url ? chrome.bookmarks.remove : chrome.bookmarks.removeTree;
+        await chromeCall(remove.bind(chrome.bookmarks), payload.id);
+      }
+    });
+  } catch (error) {
+    try {
+      const stored = await storageGet({ [STORAGE_KEYS.UNDO]: null });
+      if (stored[STORAGE_KEYS.UNDO]?.operationId === operationId) {
+        if (previous[STORAGE_KEYS.UNDO]) await storageSet({ [STORAGE_KEYS.UNDO]: previous[STORAGE_KEYS.UNDO] });
+        else await storageRemove(STORAGE_KEYS.UNDO);
+      }
+    } catch (cleanupError) {
+      throw new Error(`${error.message} Undo recovery failed: ${cleanupError.message}`);
+    }
+    throw error;
+  }
+  return { action: payload.action, changed: 1, ...(node ? { node } : {}) };
+}
+
 function validateBookmarkBatch(payload, context, completed = []) {
   if (!["move", "delete", "rename"].includes(payload.action)) throw new Error("Invalid bookmark action.");
   if (!Array.isArray(payload.ids) || !payload.ids.length || payload.ids.length > 1000 ||
@@ -2073,6 +2170,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         break;
       case "applyBookmarkBatch":
         result = await applyBookmarkBatch(payload);
+        break;
+      case "applyNodeAction":
+        result = await applyNodeAction(payload);
         break;
       case "sortFolder":
         result = await sortFolder(payload);
