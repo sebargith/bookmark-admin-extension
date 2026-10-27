@@ -163,7 +163,7 @@
         <aside class="ba-panel ba-detail" aria-label="Bookmark details" hidden></aside>
       </section>
       <footer class="ba-footer">
-        <span class="ba-status">Ready.</span>
+        <span class="ba-status" role="status" aria-live="polite">Ready.</span>
         <span class="ba-footer-hint">Right-click folders or bookmarks for actions.</span>
         <button class="ba-button ba-undo" type="button" hidden><img src="${ICONS.undo}" alt=""><span>Undo</span></button>
       </footer>
@@ -282,8 +282,16 @@
       ]);
     });
     els.undo.addEventListener("click", async () => {
-      try { await flushNotes(); const result = await send("undoLast"); await load(result.undone); }
+      if (els.undo.disabled) return;
+      els.undo.disabled = true;
+      try {
+        await flushNotes();
+        const result = await send("undoLast");
+        await load(`Undone: ${result.undone}`);
+        (els.selectAll.disabled ? els.search : els.selectAll).focus();
+      }
       catch (error) { showError(error); }
+      finally { els.undo.disabled = false; }
     });
     els.backdrop.addEventListener("pointerdown", () => {
       if (!IS_STANDALONE) closeOverlay().catch(showError);
@@ -495,6 +503,7 @@
     els.captureBar.textContent = "";
     els.undo.hidden = !state.data.lastUndo;
     els.undo.title = state.data.lastUndo?.label || "Undo last action";
+    els.undo.querySelector("span").textContent = state.data.lastUndo ? `Undo: ${state.data.lastUndo.label || "last action"}` : "Undo";
     if (!capture) return;
     const summary = document.createElement("span");
     summary.className = "ba-capture-summary";
@@ -1287,7 +1296,7 @@
     if (!protectedFolder && !readOnly) {
       items.push(
         { separator: true },
-        { label: "Rename", action: () => capture ? openCaptureAction("rename", capture) : renameNode(folder.id, folder.title) },
+        { label: "Rename", action: () => renameNode(folder.id, folder.title) },
         { label: "Move folder", action: () => moveIds([folder.id]) },
         { label: "Delete folder", danger: true, action: () => deleteIds([folder.id]) }
       );
@@ -1303,24 +1312,25 @@
   function showBookmarkMenu(event, bookmark) {
     event.preventDefault();
     event.stopPropagation();
+    const readOnly = state.data.readOnlyNodeIds.includes(bookmark.id);
     const items = [
       { label: "Open", action: () => openBookmark(bookmark.id) },
       { label: "Notes", action: () => openDetails(bookmark, "notes") },
-      { label: "Properties", action: () => openDetails(bookmark, "properties") },
-      { separator: true },
-      { label: "Refresh page index", action: () => refreshIndex([bookmark.id]) },
-      { label: "Check link", action: () => checkIds([bookmark.id]) }
+      { label: "Properties", action: () => openDetails(bookmark, "properties") }
     ];
     if (visibleBookmarkIds().includes(bookmark.id)) items.unshift({ label: state.selectedBookmarks.has(bookmark.id) ? "Deselect" : "Select", action: () => selectBookmark(bookmark.id) });
-    if (!state.data.readOnlyNodeIds.includes(bookmark.id)) {
+    if (!readOnly) {
       const capture = captureForBookmark(bookmark);
-      if (capture) items.unshift({ label: "Move to Library", action: () => openCaptureAction("move", capture, bookmark) });
-      items.splice(3, 0,
+      items.push({ separator: true },
+        { label: "Rename", action: () => renameNode(bookmark.id, bookmark.title) },
         { label: "Move", action: () => moveIds([bookmark.id]) },
-        { label: "Rename", action: () => renameNode(bookmark.id, bookmark.title) }
       );
-      items.push({ separator: true }, { label: "Delete", danger: true, action: () => deleteIds([bookmark.id]) });
+      if (capture) items.push({ label: "Move to Library", action: () => openCaptureAction("move", capture, bookmark) });
     }
+    items.push({ separator: true },
+      { label: "Refresh page index", action: () => refreshIndex([bookmark.id]) },
+      { label: "Check link", action: () => checkIds([bookmark.id]) });
+    if (!readOnly) items.push({ separator: true }, { label: "Delete", danger: true, action: () => deleteIds([bookmark.id]) });
     if (state.selectedBookmarks.has(bookmark.id) && state.selectedBookmarks.size > 1 &&
         ![...state.selectedBookmarks].some((id) => state.data.readOnlyNodeIds.includes(id))) {
       items.unshift(
@@ -1382,6 +1392,7 @@
         select.append(option);
       }
       if ([...select.options].some((option) => option.value === state.data.defaultFolder.id)) select.value = state.data.defaultFolder.id;
+      attachDestinationPicker(select);
     }
     if (type === "rename") form.querySelector(".ba-bulk-rename-fields").hidden = false;
     const refreshPreview = () => {
@@ -1516,6 +1527,8 @@
       }
       select.value = [...select.options].some((option) => option.value === state.data.defaultFolder.id) ? state.data.defaultFolder.id : select.options[0]?.value || "";
       submit.disabled = !select.value || !state.action.expectedIds.length;
+      attachDestinationPicker(select);
+      select.addEventListener("change", () => { submit.disabled = !select.value || !state.action?.expectedIds.length; });
     } else {
       form.querySelector(".ba-action-name").hidden = false;
       form.querySelector("input").required = true;
@@ -1719,48 +1732,150 @@
   }
 
   async function createFolder(parentId) {
-    if (!parentId) return;
-    const title = prompt("New folder name", "");
-    if (title === null || !title.trim()) return;
-    const result = await send("createFolder", {
-      title: title.trim(),
-      parentId
-    });
-    state.selectedFolderId = result.folder.id;
-    state.selectedByView[state.view] = result.folder.id;
-    state.expanded.add(result.folder.parentId);
-    await load(result.existed ? "Folder already exists." : "Folder created.");
-    persistNavigation();
+    if (parentId) await openNodeAction("create", parentId);
   }
 
   async function renameNode(id, currentTitle) {
-    const title = prompt("Rename", currentTitle || "");
-    if (title === null || !title.trim()) return;
-    await send("renameNode", { id, title: title.trim() });
-    await load("Renamed.");
+    await openNodeAction("rename", id);
   }
 
   async function moveIds(ids) {
-    const destinations = state.data.folders.filter((folder) => !state.data.readOnlyNodeIds.includes(folder.id));
-    const folders = destinations.map((folder) => folder.path || folder.title).join("\n");
-    const label = prompt(`Move to folder name. Available folders:\n${folders}`, DEFAULT_FOLDER_TITLE);
-    if (label === null || !label.trim()) return;
-    const query = label.trim().toLowerCase();
-    const paths = destinations.filter((folder) => folder.path.toLowerCase() === query);
-    const matches = paths.length ? paths : destinations.filter((folder) => folder.title.toLowerCase() === query);
-    const target = matches.length === 1 ? matches[0] : null;
-    if (!target) {
-      setStatus(matches.length ? "More than one folder matches. Use the full folder path." : "Folder not found.");
-      return;
-    }
-    const result = await send("bulkMove", { ids, folderId: target.id });
-    await load(`Moved ${result.moved}.`);
+    if (ids.length === 1) await openNodeAction("move", ids[0]);
   }
 
   async function deleteIds(ids) {
-    if (!confirm(`Delete ${ids.length} item${ids.length === 1 ? "" : "s"}?`)) return;
-    const result = await send("bulkDelete", { ids });
-    await load(`Deleted ${result.deleted}.${result.failed ? ` Could not delete ${result.failed}.` : ""}`);
+    if (ids.length === 1) await openNodeAction("delete", ids[0]);
+  }
+
+  function attachDestinationPicker(select) {
+    const options = [...select.options].map((option) => ({ value: option.value, label: option.textContent }));
+    const search = document.createElement("input");
+    search.type = "search";
+    search.className = "ba-input ba-destination-search";
+    search.ariaLabel = "Find destination folder";
+    search.placeholder = "Find folder";
+    const path = document.createElement("span");
+    path.className = "ba-destination-path";
+    path.setAttribute("role", "status");
+    select.before(search);
+    select.after(path);
+    const update = () => {
+      select.disabled = !select.options.length;
+      path.textContent = select.selectedOptions[0]?.textContent || "No matching writable folders.";
+    };
+    search.addEventListener("input", () => {
+      const previous = select.value;
+      const query = search.value.trim().toLowerCase();
+      select.replaceChildren(...options.filter((option) => option.label.toLowerCase().includes(query))
+        .map((option) => new Option(option.label, option.value)));
+      if ([...select.options].some((option) => option.value === previous)) select.value = previous;
+      update();
+      select.dispatchEvent(new Event("change"));
+    });
+    select.addEventListener("change", update);
+    update();
+    return search;
+  }
+
+  function nativeNode(id) {
+    let result;
+    walk(state.data.root, (node) => { if (node.id === id) result = node; });
+    return result;
+  }
+
+  async function openNodeAction(type, id) {
+    await flushNotes();
+    const node = nativeNode(id);
+    if (!node) throw new Error("Bookmark or folder no longer exists.");
+    if (state.data.readOnlyNodeIds.includes(id) || type !== "create" && state.data.protectedNodeIds.includes(id)) throw new Error("This item is protected or read-only.");
+    state.detailBookmark = null;
+    renderDetail();
+    const expected = [];
+    let bookmarks = 0;
+    let folders = 0;
+    walk(node, (item) => {
+      expected.push({ id: item.id, parentId: item.parentId, title: item.title || "", url: item.url || null, index: item.index });
+      if (item.url) bookmarks += 1;
+      else if (item.id !== id) folders += 1;
+    });
+    const action = { kind: "node", type, id, expected, returnFocus: (shadow || document).activeElement };
+    state.action = action;
+    els.actionLayer.innerHTML = `<form class="ba-action-dialog" role="dialog" aria-modal="true" aria-labelledby="ba-action-title" tabindex="-1">
+      <h2 id="ba-action-title"></h2><p class="ba-action-subject"></p><p class="ba-action-copy"></p>
+      <label class="ba-action-name" hidden><span>Name</span><input class="ba-input" aria-label="Name" maxlength="300"></label>
+      <label class="ba-action-field" hidden><span>Destination folder</span><select class="ba-select" aria-label="Destination folder"></select></label>
+      <p class="ba-action-error" role="alert"></p>
+      <div class="ba-action-buttons"><button class="ba-button ba-action-cancel" type="button">Cancel</button><button class="ba-button ba-action-submit" type="submit"></button></div>
+    </form>`;
+    const form = els.actionLayer.querySelector("form");
+    const verb = { create: "Create", rename: "Rename", move: "Move", delete: "Delete" }[type];
+    form.querySelector("h2").textContent = type === "create" ? "New folder" : `${verb} ${node.url ? "bookmark" : "folder"}`;
+    form.querySelector(".ba-action-subject").textContent = node.title || "Untitled";
+    form.querySelector(".ba-action-copy").textContent = type === "delete" ?
+      (node.url ? "Delete this bookmark?" : `Delete this folder, ${folders} subfolders and ${bookmarks} bookmarks?`) + " Undo restores the deleted items. A later action replaces the single undo entry." :
+      type === "create" ? `Parent: ${folderTrail(id).map(folderDisplayName).join(" / ")}` :
+      type === "move" ? "Names, URLs, notes and folder structure will be kept." : "The bookmark location and saved notes will be kept.";
+    const submit = form.querySelector(".ba-action-submit");
+    submit.textContent = verb;
+    submit.classList.add(type === "delete" ? "ba-danger" : "ba-blue");
+    let initialFocus = form.querySelector(".ba-action-cancel");
+    if (type === "rename" || type === "create") {
+      form.querySelector(".ba-action-name").hidden = false;
+      const input = form.querySelector("input");
+      input.required = true;
+      input.value = type === "rename" ? node.title || "" : "";
+      initialFocus = input;
+    }
+    if (type === "move") {
+      form.querySelector(".ba-action-field").hidden = false;
+      const select = form.querySelector("select");
+      for (const folder of state.data.folders) {
+        if (folder.id === state.data.root.id || folder.id === node.parentId || state.data.readOnlyNodeIds.includes(folder.id) || folderTrail(folder.id).some((item) => item.id === id)) continue;
+        select.append(new Option(folder.path || folder.title || "Untitled", folder.id));
+      }
+      if ([...select.options].some((option) => option.value === state.data.defaultFolder.id)) select.value = state.data.defaultFolder.id;
+      initialFocus = attachDestinationPicker(select);
+      select.addEventListener("change", () => { submit.disabled = !select.value; });
+      submit.disabled = !select.value;
+    }
+    bindActionDialog(form, submitNodeAction, initialFocus);
+    if (initialFocus.tagName === "INPUT" && initialFocus.type !== "search") initialFocus.select();
+  }
+
+  async function submitNodeAction(event) {
+    event.preventDefault();
+    const action = state.action;
+    const form = event.currentTarget;
+    if (!action || state.actionBusy || form.querySelector(".ba-action-submit").disabled) return;
+    const title = form.querySelector(".ba-action-name input").value.trim();
+    const folderId = form.querySelector("select").value;
+    if (["create", "rename"].includes(action.type) && !title) return;
+    state.actionBusy = true;
+    const controls = [...form.querySelectorAll("button,input,select")];
+    controls.forEach((control) => { control.disabled = true; });
+    try {
+      const result = action.type === "create" ? await send("createFolder", { parentId: action.id, title }) :
+        await send("applyNodeAction", { action: action.type, id: action.id, title, folderId, expected: action.expected,
+          destinationPath: folderId ? folderTrail(folderId).map((folder) => folder.id) : undefined, confirmed: true });
+      if (action.type === "create") {
+        state.selectedFolderId = result.folder.id;
+        state.selectedByView[state.view] = result.folder.id;
+        state.expanded.add(result.folder.parentId);
+      }
+      state.actionBusy = false;
+      closeCaptureAction();
+      await load(action.type === "create" ? result.existed ? "Folder already exists." : "Folder created." :
+        action.type === "delete" ? "Deleted. Undo is available." : action.type === "move" ? "Moved. Undo is available." : "Renamed. Undo is available.");
+      if (action.type === "create") persistNavigation();
+    } catch (error) {
+      state.actionBusy = false;
+      if (state.action !== action) return;
+      controls.forEach((control) => { control.disabled = false; });
+      form.querySelector(".ba-action-error").textContent = error.message;
+      form.querySelector(".ba-action-submit").disabled = true;
+      await load(error.message).catch(showError);
+      if (form.isConnected) form.querySelector(".ba-action-cancel").focus();
+    }
   }
 
   async function sortFolder(folderId) {

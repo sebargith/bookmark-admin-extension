@@ -667,6 +667,9 @@
 .ba-action-subject { color: #eff8f1; font-weight: 700; overflow-wrap: anywhere; }
 .ba-action-copy { color: #b6c6bc; }
 .ba-action-field, .ba-action-name { display: grid; gap: 6px; margin: 16px 0; }
+.ba-destination-search { width: 100%; min-width: 0; }
+.ba-destination-path { color: #a7d9c8; font-size: 12px; overflow-wrap: anywhere; }
+.ba-action-field .ba-select, .ba-bulk-field .ba-select { max-width: 100%; min-width: 0; }
 .ba-action-dialog select, .ba-action-dialog input { min-width: 0; width: 100%; }
 .ba-action-error { color: #fda4af; overflow-wrap: anywhere; }
 .ba-action-error:empty { display: none; }
@@ -1066,11 +1069,17 @@
 
 .ba-footer {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: space-between;
   padding: 8px 14px 12px;
   color: #94a3b8;
   font-size: 12px;
 }
+.ba-footer .ba-status { min-width: 0; overflow-wrap: anywhere; }
+.ba-undo { max-width: 100%; margin-left: auto; min-width: 0; }
+.ba-undo span { white-space: normal; overflow-wrap: anywhere; text-align: left; }
 
 .ba-menu {
   position: fixed;
