@@ -1,0 +1,81 @@
+const assert = require("node:assert/strict");
+const path = require("node:path");
+const { copy } = require("./chrome-fixture.cjs");
+
+module.exports = async function verifyNodeActionsUI({ page, fixture, artifacts }) {
+  let checks = 0;
+  const equal = (...args) => { assert.equal(...args); checks += 1; };
+  const originalRoot = copy(fixture.root);
+  const originalStorage = copy(fixture.storage);
+  const mutationCount = fixture.mutations.length;
+  const dialog = page.locator(".ba-action-dialog");
+  const menu = page.locator(".ba-menu");
+  const folderMenu = async (id, action, context = false) => {
+    const row = page.locator(`[data-folder-id="${id}"]`).first();
+    if (context) await row.click({ button: "right" });
+    else await row.locator(":scope > .ba-icon-btn").click();
+    await menu.getByRole("button", { name: action, exact: true }).click();
+  };
+  const loaded = async (action) => {
+    const before = await page.evaluate(() => globalThis.__managerReplies);
+    await action();
+    await page.waitForFunction((old) => globalThis.__managerReplies > old, before);
+  };
+  await folderMenu("102", "Rename", true);
+  equal(await dialog.getByRole("heading").innerText(), "Rename folder");
+  await dialog.getByRole("textbox", { name: "Name", exact: true }).fill("Reviewed research");
+  await loaded(() => dialog.getByRole("button", { name: "Rename", exact: true }).click());
+  equal(fixture.find("102").title, "Reviewed research");
+  equal(await page.locator(".ba-undo").innerText(), "Undo: Renamed item");
+  await loaded(() => page.locator(".ba-undo").click());
+  equal(fixture.find("102").title, "Research");
+
+  await folderMenu("102", "Move folder");
+  const destination = dialog.getByRole("combobox", { name: "Destination folder", exact: true });
+  equal(await destination.locator('option[value="102"]').count(), 0);
+  equal(await destination.locator('option[value="100"]').count(), 0);
+  equal(await destination.locator('option[value="400"]').count(), 0);
+  const find = dialog.getByRole("searchbox", { name: "Find destination folder", exact: true });
+  await find.fill("no matching synthetic destination");
+  equal(await destination.isDisabled(), true);
+  equal(await dialog.getByRole("button", { name: "Move", exact: true }).isDisabled(), true);
+  await find.fill("Other bookmarks");
+  await destination.selectOption("2");
+  equal(await dialog.locator(".ba-destination-path").innerText(), "Other bookmarks");
+  await page.setViewportSize({ width: 390, height: 844 });
+  equal(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1), true);
+  await page.screenshot({ path: path.join(artifacts, "node-move-390.png"), animations: "disabled" });
+  await loaded(() => dialog.getByRole("button", { name: "Move", exact: true }).click());
+  equal(fixture.find("102").parentId, "2");
+  await loaded(() => page.locator(".ba-undo").click());
+  equal(fixture.find("102").parentId, "100");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
+  await folderMenu("102", "Delete folder");
+  equal(await dialog.locator(".ba-action-copy").innerText().then((text) => /0 subfolders and 1 bookmarks/.test(text)), true);
+  equal(await dialog.getByRole("button", { name: "Cancel", exact: true }).evaluate((node) => node === document.activeElement), true);
+  await page.screenshot({ path: path.join(artifacts, "node-delete.png"), animations: "disabled" });
+  await page.keyboard.press("Escape");
+  equal(fixture.find("201").parentId, "102");
+  await folderMenu("102", "Delete folder", true);
+  fixture.find("201").title = "Externally changed child";
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await dialog.locator(".ba-action-error").filter({ hasText: /changed/i }).waitFor();
+  equal(fixture.find("201").title, "Externally changed child");
+  equal(await dialog.getByRole("button", { name: "Delete", exact: true }).isDisabled(), true);
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await folderMenu("102", "Delete folder");
+  await loaded(() => dialog.getByRole("button", { name: "Delete", exact: true }).click());
+  equal(fixture.find("102"), undefined);
+  equal(await page.locator(".ba-undo").isVisible(), true);
+  await loaded(() => page.locator(".ba-undo").click());
+  equal(fixture.find("100").children.some((node) => node.title === "Research" && node.children[0].title === "Externally changed child"), true);
+
+  fixture.root.children = originalRoot.children;
+  for (const key of Object.keys(fixture.storage)) delete fixture.storage[key];
+  Object.assign(fixture.storage, originalStorage);
+  fixture.mutations.length = mutationCount;
+  await page.reload();
+  await page.waitForFunction(() => document.querySelectorAll(".ba-bookmark-list .ba-bookmark-row").length === 2);
+  return checks;
+};

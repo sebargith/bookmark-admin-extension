@@ -5,6 +5,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { createFixture, copy } = require("./helpers/chrome-fixture.cjs");
 const verifySelectionUI = require("./helpers/selection-ui.cjs");
+const verifyNodeActionsUI = require("./helpers/node-actions-ui.cjs");
 const verifySearchFiltersUI = require("./helpers/search-filters-ui.cjs");
 const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright");
 
@@ -41,6 +42,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
         buildExport: "buildExport", openExportPage: "openExportPage" };
       Object.assign(commands, { reopenSavedWindow: "reopenSavedWindow", moveSavedItemsToLibrary: "moveSavedItemsToLibrary", undoLast: "undoLast" });
       Object.assign(commands, { previewBookmarkBatch: "previewBookmarkBatch", applyBookmarkBatch: "applyBookmarkBatch" });
+      Object.assign(commands, { applyNodeAction: "applyNodeAction" });
       try {
         if (type === "updateMetadata") {
           if (rejectNotes) throw new Error("Simulated storage failure");
@@ -95,6 +97,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
       assertions += 1;
     };
     await waitRows(2);
+    assertions += await verifyNodeActionsUI({ page, fixture, artifacts });
     assertions += await verifySearchFiltersUI({ page, fixture, artifacts });
     assertions += await verifySelectionUI({ page, fixture, artifacts });
     const quickSaveSettings = copy(fixture.storage.settings);
@@ -240,7 +243,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     assert.deepEqual(fixture.windowsCreated[0].url, ["https://example.test/210", "https://example.test/211"]);
     await page.locator('[data-folder-id="110"] .ba-icon-btn').click();
     await page.locator(".ba-menu button", { hasText: /^Rename$/ }).click();
-    await actionDialog.getByRole("textbox", { name: "Capture name", exact: true }).fill("Design research session");
+    await actionDialog.getByRole("textbox", { name: "Name", exact: true }).fill("Design research session");
     await page.screenshot({ path: path.join(artifacts, "capture-rename.png"), animations: "disabled" });
     await actionDialog.getByRole("button", { name: "Rename", exact: true }).click();
     await actionDialog.waitFor({ state: "hidden" });
@@ -522,8 +525,9 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     assert.equal(exported.root.children.length, 2);
     assertions += 1;
 
-    page.once("dialog", (dialog) => dialog.accept("Session child"));
     await page.getByRole("button", { name: "New folder", exact: true }).click();
+    await page.locator(".ba-action-dialog").getByRole("textbox", { name: "Name", exact: true }).fill("Session child");
+    await page.locator(".ba-action-dialog").getByRole("button", { name: "Create", exact: true }).click();
     await page.waitForFunction(() => document.querySelector(".ba-list-title").textContent === "Session child");
     assert.equal(fixture.mutations.at(-1).parentId, "110");
     assertions += 1;
