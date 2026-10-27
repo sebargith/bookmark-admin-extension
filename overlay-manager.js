@@ -32,6 +32,8 @@
     dateFilter: "all",
     sortMode: "newest",
     issueFilter: "all",
+    domainFilter: "",
+    duplicatesOnly: false,
     noteTimer: null,
     noteDrafts: new Map(),
     noteVersion: 0,
@@ -96,7 +98,7 @@
         </button>
       </nav>
       <section class="ba-toolbar">
-        <input class="ba-input ba-search" type="search" aria-label="Search Library" placeholder="Search Library">
+        <input class="ba-input ba-search" type="search" aria-label="Search Library" aria-describedby="ba-search-scope" placeholder="Search Library">
         <select class="ba-select ba-date-filter" aria-label="Date added">
           <option value="all">Any time</option>
           <option value="today">Added today</option>
@@ -116,9 +118,15 @@
           <option value="issues">Issues only</option>
           <option value="unused">Never opened</option>
         </select>
+        <select class="ba-select ba-domain-filter" aria-label="Domain"><option value="">All domains</option></select>
+        <label class="ba-duplicates-control"><input class="ba-duplicates-filter" type="checkbox">Duplicates only</label>
         <button class="ba-button ba-blue ba-check" type="button"><img src="${ICONS.check}" alt=""><span>Check</span></button>
         <button class="ba-button ba-blue ba-index" type="button"><img src="${ICONS.index}" alt=""><span>Index</span></button>
         <button class="ba-button ba-export" type="button"><img src="${ICONS.export}" alt=""><span>Export</span></button>
+        <div class="ba-filter-summary">
+          <span class="ba-search-scope" id="ba-search-scope" role="status"></span>
+          <div class="ba-active-filters" role="group" aria-label="Active filters" hidden></div>
+        </div>
       </section>
       <section class="ba-layout" id="ba-manager-content" role="tabpanel" aria-labelledby="ba-view-library">
         <section class="ba-panel ba-library-panel">
@@ -191,6 +199,10 @@
     dateFilter: root.querySelector(".ba-date-filter"),
     sort: root.querySelector(".ba-sort"),
     issueFilter: root.querySelector(".ba-issue-filter"),
+    domainFilter: root.querySelector(".ba-domain-filter"),
+    duplicatesFilter: root.querySelector(".ba-duplicates-filter"),
+    searchScope: root.querySelector(".ba-search-scope"),
+    activeFilters: root.querySelector(".ba-active-filters"),
     check: root.querySelector(".ba-check"),
     index: root.querySelector(".ba-index"),
     export: root.querySelector(".ba-export"),
@@ -280,7 +292,7 @@
     els.win.addEventListener("pointerdown", (event) => event.stopPropagation());
     els.search.addEventListener("input", () => {
       state.search = els.search.value.trim().toLowerCase();
-      render();
+      renderBookmarks();
     });
     els.dateFilter.addEventListener("change", () => {
       state.dateFilter = els.dateFilter.value;
@@ -292,6 +304,14 @@
     });
     els.issueFilter.addEventListener("change", () => {
       state.issueFilter = els.issueFilter.value;
+      renderBookmarks();
+    });
+    els.domainFilter.addEventListener("change", () => {
+      state.domainFilter = els.domainFilter.value;
+      renderBookmarks();
+    });
+    els.duplicatesFilter.addEventListener("change", () => {
+      state.duplicatesOnly = els.duplicatesFilter.checked;
       renderBookmarks();
     });
     els.check.addEventListener("click", () => checkVisible().catch(showError));
@@ -778,6 +798,7 @@
   function renderBookmarks() {
     if (!state.data) return;
     const focusMemory = captureNavigationFocus();
+    renderFilterControls();
     const folder = folderById(state.selectedFolderId);
     const bookmarks = visibleBookmarks();
     const visibleIds = new Set(bookmarks.map((bookmark) => bookmark.id));
@@ -791,7 +812,7 @@
     els.index.disabled = !bookmarks.length;
 
     if (!bookmarks.length) {
-      const filtered = state.search || state.dateFilter !== "all" || state.issueFilter !== "all";
+      const filtered = state.search || state.dateFilter !== "all" || state.issueFilter !== "all" || state.domainFilter || state.duplicatesOnly;
       const copy = filtered ? "No bookmarks match these filters." :
         (state.view === "windows" && !scopeRoots().length ? "No saved windows yet." : "No bookmarks here yet.");
       const image = filtered ? ILLUSTRATIONS.noSearchResults : ILLUSTRATIONS.emptyLibrary;
@@ -1110,14 +1131,88 @@
       ? new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short" }).format(date) : "-";
   }
 
-  function visibleBookmarks() {
+  function currentScopeBookmarks() {
     if (!state.data) return [];
-    let bookmarks = [...scopeBookmarks()];
-    if (state.selectedFolderId) {
-      bookmarks = bookmarks.filter((bookmark) =>
-        bookmark.folderId === state.selectedFolderId || bookmark.folderAncestors.includes(state.selectedFolderId)
-      );
+    return scopeBookmarks().filter((bookmark) => !state.selectedFolderId ||
+      bookmark.folderId === state.selectedFolderId || bookmark.folderAncestors.includes(state.selectedFolderId));
+  }
+
+  function bookmarkHostname(bookmark) {
+    try { return new URL(bookmark.url).hostname; }
+    catch { return ""; }
+  }
+
+  function renderFilterControls() {
+    const domains = [...new Set(currentScopeBookmarks().map(bookmarkHostname).filter(Boolean))].sort();
+    if (!domains.includes(state.domainFilter)) state.domainFilter = "";
+    els.domainFilter.replaceChildren(new Option("All domains", ""), ...domains.map((domain) => new Option(domain, domain)));
+    els.domainFilter.value = state.domainFilter;
+    els.domainFilter.disabled = !domains.length;
+    const trail = folderTrail(state.selectedFolderId).filter((folder) => folderInView(folder.id) &&
+      !(state.view === "library" && folder.id === state.data.managedRoot.id));
+    const location = [VIEW_LABELS[state.view], ...trail.map((folder) => folder.title || "Untitled")].join(" / ");
+    els.searchScope.textContent = `Search scope: ${location} (including subfolders)`;
+    const focusedChip = (shadow || document).activeElement?.closest("[data-remove-filter]")?.dataset.removeFilter;
+    els.activeFilters.textContent = "";
+    const filters = [
+      ["search", state.search, `Search: ${els.search.value.trim()}`, els.search, ""],
+      ["dateFilter", state.dateFilter !== "all", els.dateFilter.selectedOptions[0].textContent, els.dateFilter, "all"],
+      ["issueFilter", state.issueFilter !== "all", els.issueFilter.selectedOptions[0].textContent, els.issueFilter, "all"],
+      ["domainFilter", state.domainFilter, `Domain: ${state.domainFilter}`, els.domainFilter, ""],
+      ["duplicatesOnly", state.duplicatesOnly, "Duplicates only", els.duplicatesFilter, false]
+    ];
+    const reset = (filter) => {
+      const [key, , , control, value] = filter;
+      state[key] = value;
+      if (control.type === "checkbox") control.checked = value;
+      else control.value = value;
+    };
+    for (const filter of filters.filter((item) => item[1])) {
+      const [key, , label, control] = filter;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ba-filter-chip";
+      button.dataset.removeFilter = key;
+      button.textContent = `${label} \u00d7`;
+      button.title = button.ariaLabel = `Remove ${label}`;
+      button.addEventListener("click", () => {
+        reset(filter);
+        renderBookmarks();
+        (control.disabled ? els.search : control).focus();
+      });
+      els.activeFilters.append(button);
     }
+    els.activeFilters.hidden = !els.activeFilters.childElementCount;
+    root.classList.toggle("ba-filtering", !els.activeFilters.hidden);
+    if (!els.activeFilters.hidden) {
+      const clear = document.createElement("button");
+      clear.type = "button";
+      clear.className = "ba-filter-clear";
+      clear.textContent = "Clear all";
+      clear.ariaLabel = "Clear all filters";
+      clear.dataset.removeFilter = "all";
+      clear.addEventListener("click", () => {
+        filters.forEach(reset);
+        renderBookmarks();
+        els.search.focus();
+      });
+      els.activeFilters.append(clear);
+    }
+    if (focusedChip) (els.activeFilters.querySelector(`[data-remove-filter="${focusedChip}"]`) || els.search).focus();
+  }
+
+  function visibleBookmarks() {
+    let bookmarks = currentScopeBookmarks();
+    // Count before applying any filters: a matching copy may be hidden by search/date/status.
+    if (state.duplicatesOnly) {
+      const counts = new Map();
+      for (const bookmark of bookmarks) {
+        const key = noteKey(bookmark);
+        if (key) counts.set(key, (counts.get(key) || 0) + 1);
+      }
+      bookmarks = bookmarks.filter((bookmark) => counts.get(noteKey(bookmark)) > 1);
+    }
+    if (state.domainFilter) bookmarks = bookmarks.filter((bookmark) => bookmarkHostname(bookmark) === state.domainFilter);
 
     bookmarks = bookmarks.filter(matchesDateFilter).filter(matchesIssueFilter);
     if (state.search) bookmarks = bookmarks.filter((bookmark) => searchableText(bookmark).includes(state.search));

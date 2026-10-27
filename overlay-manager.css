@@ -216,6 +216,40 @@
 .ba-toolbar .ba-select {
   flex: 0 1 135px;
   width: 135px;
+  min-width: 0;
+}
+
+.ba-duplicates-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  cursor: pointer;
+}
+
+.ba-duplicates-filter { margin: 0; accent-color: #34d399; }
+.ba-filter-summary { flex: 1 0 100%; min-width: 0; }
+.ba-search-scope { display: block; color: #cbd5e1; font-size: 12px; overflow-wrap: anywhere; }
+.ba-active-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; min-width: 0; }
+.ba-filter-chip, .ba-filter-clear {
+  max-width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid #526574;
+  border-radius: 6px;
+  background: #202d36;
+  color: #e2f5ed;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.ba-filter-clear { background: transparent; color: #bae6fd; }
+.ba-filter-chip:hover, .ba-filter-clear:hover { border-color: #7dd3fc; }
+.ba-filter-chip:focus-visible, .ba-filter-clear:focus-visible, .ba-duplicates-filter:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 2px;
 }
 
 .ba-navigation {
@@ -1158,6 +1192,12 @@
     grid-template-columns: 1fr;
     grid-template-rows: minmax(240px, 45%) minmax(150px, 1fr);
     overflow-y: auto;
+  }
+
+  .ba-toolbar { max-height: 42vh; overflow-y: auto; }
+  .ba-filtering .ba-layout,
+  .ba-filtering .ba-layout.ba-has-detail {
+    grid-template-rows: minmax(130px, 35%) minmax(240px, 1fr);
   }
 }
 
