@@ -21,5 +21,9 @@ Before publishing changes:
   - use breadcrumbs and expand/collapse controls without changing the selected location
   - rename, move, and remove the selected folder in Chrome and verify the manager refreshes safely
   - confirm manager navigation does not change the compact popup's last save destination
+  - recognize a numbered capture, rename and move it, and verify it remains in Saved Windows
+  - confirm/cancel reopening a saved window; verify order, repeated URLs and unsupported-link skips
+  - move one captured bookmark and all capture contents to Library, then undo each operation
+  - move a capture into Library and verify its own folder is not offered as a transfer destination
   - edit notes
   - export JSON or HTML

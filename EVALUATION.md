@@ -194,3 +194,82 @@ again, with no additional navigation write when closing the older manager.
 The shared evidence limits above apply: these are synthetic Chrome API checks
 with real browser rendering, not verification as an installed extension or a
 security certification.
+
+## Phase 5: Saved-window workflows
+
+Implementation commits: `97407fe` (capture identity and worker operations),
+`614075e` (confirmation guards and storage-failure coverage), and `7787b5a`
+(capture actions, dates, destination dialogs and interface tests).
+
+Recognized capture folder IDs persist locally across rename and move. New
+captures record their timestamp and original saved-tab count; legacy captures
+show folder creation dates instead of claiming a capture time. Current counts
+include nested bookmarks. Nested captures do not duplicate overview/export trees,
+and deletion undo remaps capture identity to restored native IDs.
+
+Reopening requires confirmation, preserves order and duplicate URLs, skips
+non-web/invalid links, rejects more than 100 pages, and shares overlapping requests.
+Library transfers preserve native IDs, notes and subfolder structure and offer
+undo. Confirmation snapshots reject changed captures. Dialogs contain keyboard
+focus, make the background inert, and support cancellation and error recovery.
+
+Verification: 40 unit tests and 228 browser assertions pass using synthetic
+bookmarks. Tests include reopening failure/retry/cancel, stale confirmations,
+individual/content moves and undo, renamed capture identity, capture metadata
+storage failure, desktop and 390px dialogs, and existing navigation/details
+regressions. No personal Chrome profile was used.
+
+Initial independent evaluation at `7787b5a`: functionality 8/10, visuals 8/10,
+usability 7/10; arithmetic overall 7.67/10. The evaluator independently reran all
+40 unit tests and 228 browser assertions without page errors and inspected five
+capture screenshots. Although above threshold, two findings warranted an optional
+revision: transfer validation compared different snapshots, and successful toolbar
+actions lost keyboard focus after a refresh.
+
+Revision 1 (`3cb6d93`, `e311bec`) validates capture contents, source protection and
+Library destination scope against the execution context immediately before each
+native move. Expected remaining contents exclude only this operation's completed
+subtrees. Detected conflicts stop further moves; partial undo includes successes
+only, and an abort before any move restores the previous undo record when it is
+still owned by this operation. Unrelated bulk moves were not changed. Capture
+toolbar focus now uses stable action identities and falls back to a folder row
+or overview if the action disappears or becomes disabled.
+
+All 43 unit tests and 230 browser assertions pass without page errors. New probes
+cover URL changes between capture lookup and execution, destinations leaving
+Library during an undo write or between moves, partial undo, and focus after
+successful Open/Move toolbar actions. The evaluator independently reran these
+checks and its original race/focus probes, inspected all five revised screenshots,
+and accepted revision 1 at functionality 9/10, visuals 8/10, usability 8/10;
+arithmetic overall 8.33/10. Both initial findings were resolved.
+
+A further local regression probe found that a recognized capture moved inside
+Library could choose its own folder as a transfer destination. Native same-parent
+moves reordered items before the remaining-content guard stopped the operation.
+Optional revision 2 (`d91bf0a`) rejects moves when the selected items already have
+the requested parent, before any mutation or undo replacement. The picker excludes
+that destination. Tests cover whole-capture and individual-bookmark rejection,
+unchanged item order and undo, and the picker after moving a capture into Library.
+All 44 unit tests and 232 browser assertions pass without page errors.
+
+| Category | Final Score |
+| --- | ---: |
+| Functionality | 9/10 |
+| Visuals | 8/10 |
+| Usability | 8/10 |
+| Arithmetic Overall | 8.33/10 |
+
+Outcome: independently accepted at `d91bf0a` after both optional revision rounds.
+The evaluator reran all 44 unit tests and 232 browser assertions, with zero page
+errors, and independently confirmed no-op transfers preserve item order and prior
+undo. An additional browser picker probe verified exclusion for individual
+bookmarks, availability of other Library targets, and unchanged undo on cancel.
+The original race probes and revision 1 focus checks still pass. Five final
+screenshots plus the individual-bookmark picker were inspected without visual
+regressions. No new actionable findings were identified within the review.
+
+The shared evidence limits above apply: real browser rendering uses synthetic
+Chrome APIs, not a loaded-extension/native API integration test or a security
+certification. Native operations are not transactional; per-move conflict checks
+cannot provide atomic locking. MV3 service-worker lifecycle and actual native
+bookmark/window operations remain unverified.

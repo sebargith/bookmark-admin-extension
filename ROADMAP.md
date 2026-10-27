@@ -89,10 +89,30 @@ evaluator confirmed both focus and narrow-height findings resolved, checked a
 overwrite newer navigation on close. No second revision was needed. See
 [EVALUATION.md](EVALUATION.md) for evidence and verification limits.
 
-## 5. Saved-window workflows (planned)
+## 5. Saved-window workflows (complete)
 
-Show capture dates and tab counts. Reopen a capture as a window, rename it, and
-move useful bookmarks into the permanent library. Keep renamed captures identifiable.
+Implemented local native-ID capture identity, actual timestamps for new captures,
+honest folder-created dates for legacy captures, and live counts. Recognized
+captures remain visible after rename/move. Nested captures do not duplicate trees
+or exported bookmarks. Deletion undo restores identity against new native IDs.
+
+Capture actions use focused dialogs for rename, confirmed web-only reopening,
+and Library-folder picking. Reopening preserves order and duplicates, limits an
+operation to 100 pages, and prevents overlapping requests from opening duplicate
+windows. Individual bookmarks or capture contents can move to Library while
+preserving IDs, notes, folder structure and undo. Stale confirmations are rejected.
+
+Initial independent evaluation scored functionality 8/10, visuals 8/10 and
+usability 7/10 (7.67/10 overall). An optional revision addresses execution-time
+transfer validation and capture-action focus after refresh. Transfers now stop on
+detected concurrent changes, preserve undo for successful items only, and leave
+unrelated bulk-move behavior unchanged. Revision 1 was independently accepted at
+8.33/10. A second optional revision rejects transfers into the items' existing
+parent and excludes that destination from the picker. Independently accepted at
+8.33/10 after both optional revision rounds. The evaluator reran 44 unit tests
+and 232 browser assertions, plus targeted concurrency, focus and destination
+probes, without page errors or new actionable findings. Native loaded-extension
+integration remains unverified. See [EVALUATION.md](EVALUATION.md).
 
 ## 6. Selection and bulk actions (planned)
 
