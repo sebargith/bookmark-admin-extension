@@ -346,3 +346,42 @@ Evidence limits remain unchanged: isolated real Chrome rendering uses synthetic
 APIs. No personal profile was accessed. Loaded-extension/native API integration,
 MV3 lifecycle, actual browser crashes, real touch/macOS and screen-reader behavior,
 and security certification are not covered by these checks.
+
+## Phase 7: Search and filters
+
+Implementation commits: `53c462e` (runtime), `f959d12` (synthetic regressions).
+Search scope names the active view and folder, including descendants. Domain
+choices use exact parsed hostnames from that scope. Duplicate matches use existing
+normalized URLs within the same scope before other filters. Active text, date,
+status, domain and duplicate filters can be removed individually or cleared
+together without changing sorting, native bookmarks or export scope. Hidden
+selection is discarded and unavailable domain choices reset on refresh.
+
+Initial independent evaluation: functionality 9/10, visuals 7/10, usability 7/10;
+arithmetic overall 7.67/10. The evaluator independently passed 56 unit tests and
+371 browser assertions without page errors, inspected screenshots and checked
+exact domains, scoped duplicates, external updates, chip keyboard/focus behavior,
+hidden selections and zero synthetic bookmark mutations. A compact-layout finding
+showed only 14px of folder-tree scrolling height with filters active.
+
+Optional revision 1 (`89a458f`) removes that reduced tree reservation and gives
+both navigation and results minimum space in narrow layouts, with central-area
+scrolling when necessary. Regression checks now require at least 96px of actual
+folder-tree height at 390x844, 320x844 and 390x600 while all five filters are active.
+All 56 unit tests and 378 browser assertions pass without page errors. Evidence:
+`phase-7-initial`, `phase-7-evaluator`, and `phase-7-revision-1` directories in the
+external verification workspace; generated artifacts are not packaged.
+
+Final independent scores: functionality 9/10, visuals 8/10, usability 8/10;
+arithmetic overall 8.33/10. Accepted after one optional revision with no new
+actionable findings. The evaluator independently reran all 56 unit tests and
+378 browser assertions without page errors or observed remote page requests.
+Tree height was 115px at the three narrow viewports and 101px after manager
+resizing. Pointer/keyboard navigation after external rename, scope, chip focus
+and access to results through scrolling were verified. Screenshots were inspected
+from `phase-7-evaluator-revision-1`. Short windows still require scrolling.
+
+These checks use isolated Chrome rendering and synthetic APIs, not a loaded
+extension or personal profile. Native bookmark events/MV3 lifecycle, screen
+readers, touch hardware, large-library performance and security certification
+remain unverified. No personal bookmark data was used or committed.

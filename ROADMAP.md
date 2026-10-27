@@ -147,10 +147,22 @@ tests and 300 browser assertions and checked narrow menus, focus recovery and
 composited contrast. Native loaded-extension integration remains unverified. See
 [EVALUATION.md](EVALUATION.md).
 
-## 7. Search and filters (planned)
+## 7. Search and filters (complete)
 
 Show result locations and explicit search scope. Add domain filtering and visible,
 removable filter controls, including a useful duplicate view.
+
+Implemented exact-hostname domain choices, scoped normalized-URL duplicates,
+explicit view/folder search scope and individually removable text/date/status/
+domain/duplicate filters. Clear all retains sorting. Result locations remain in
+compact rows, hidden selections are discarded, and unavailable domain choices
+reset after native changes. No new permissions or network requests are required.
+
+Independently accepted at 8.33/10 after one optional revision from 7.67/10.
+The revision restores compact folder navigation space with active filters.
+All 56 unit tests and 378 browser assertions pass with synthetic data; the
+evaluator verified folder access after external rename and actual resizing.
+See [EVALUATION.md](EVALUATION.md) for evidence and remaining limitations.
 
 ## 8. Consistent actions and recovery (planned)
 

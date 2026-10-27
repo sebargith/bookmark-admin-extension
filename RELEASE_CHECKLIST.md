@@ -30,4 +30,8 @@ Before publishing changes:
   - preview/cancel/apply batch rename, move and delete, then verify native order and undo
   - open More with Enter, navigate actions with arrows, and verify Escape/Tab and failed-submit focus recovery
   - edit notes
+  - verify the displayed search scope follows the selected view and folder
+  - combine domain, duplicate, date, status and text filters; remove them individually and clear all
+  - verify duplicate counts are scoped and hidden selections do not return when filters are cleared
+  - verify filter controls remain accessible after resizing and external bookmark changes
   - export JSON or HTML
