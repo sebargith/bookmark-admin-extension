@@ -84,6 +84,61 @@ test("a stale tree snapshot cannot erase a newly registered capture", async () =
   assert.equal(records.fresh, undefined);
 });
 
+test("transfer confirmation validates changed URLs against the execution tree, not its earlier capture snapshot", async () => {
+  const fixture = createFixture();
+  const expectedContents = fixture.find("110").children.map((item) => [item.id, item.parentId, item.url]);
+  const getSavedWindow = fixture.context.getSavedWindow;
+  fixture.context.getSavedWindow = async (id) => {
+    const result = await getSavedWindow(id);
+    fixture.find("210").url = "https://example.test/changed-during-transfer";
+    return result;
+  };
+  await assert.rejects(fixture.context.moveSavedItemsToLibrary({ captureId: "110", folderId: "102", expectedContents }), /capture changed/);
+  assert.deepEqual(fixture.mutations, []);
+});
+
+test("transfer rejects a destination moved outside Library while the undo write is pending", async () => {
+  const fixture = createFixture();
+  const previousUndo = { action: "rename", label: "Previous action", renames: [] };
+  fixture.storage.lastUndo = copy(previousUndo);
+  const set = fixture.chrome.storage.local.set;
+  let changed = false;
+  fixture.chrome.storage.local.set = (values, callback) => {
+    if (values.lastUndo?.transferId && !changed) {
+      changed = true;
+      const destination = fixture.find("102");
+      fixture.find("100").children = fixture.find("100").children.filter((item) => item.id !== "102");
+      fixture.find("111").children.push(destination);
+      destination.parentId = "111";
+    }
+    set(values, callback);
+  };
+  await assert.rejects(fixture.context.moveSavedItemsToLibrary({ captureId: "110", folderId: "102" }), /inside Library/);
+  assert.deepEqual(fixture.mutations, []);
+  assert.deepEqual(fixture.storage.lastUndo, previousUndo);
+});
+
+test("transfer stops if destination changes between native moves and undo only includes successful items", async () => {
+  const fixture = createFixture();
+  const move = fixture.chrome.bookmarks.move;
+  fixture.chrome.bookmarks.move = (id, destination, callback) => move(id, destination, (result) => {
+    if (id === "210" && destination.parentId === "102") {
+      const folder = fixture.find("102");
+      fixture.find("100").children = fixture.find("100").children.filter((item) => item.id !== "102");
+      fixture.find("111").children.push(folder);
+      folder.parentId = "111";
+    }
+    callback(result);
+  });
+  await assert.rejects(fixture.context.moveSavedItemsToLibrary({ captureId: "110", folderId: "102" }), /Moved 1 items before stopping/);
+  assert.equal(fixture.find("210").parentId, "102");
+  assert.equal(fixture.find("211").parentId, "110");
+  assert.deepEqual(fixture.storage.lastUndo.moves.map((item) => item.id), ["210"]);
+  await fixture.context.undoLast();
+  assert.equal(fixture.find("210").parentId, "110");
+  assert.equal(fixture.find("102").parentId, "111");
+});
+
 test("moving capture contents into Library preserves native IDs, notes and undo", async () => {
   const fixture = createFixture();
   const before = copy(fixture.root);

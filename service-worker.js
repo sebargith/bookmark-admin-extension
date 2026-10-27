@@ -1066,9 +1066,9 @@ function reopenSavedWindow(payload = {}) {
   return reopeningWindows.get(id);
 }
 
-async function moveSavedItemsToLibrary(payload = {}) {
-  const { node } = await getSavedWindow(payload.captureId);
-  const context = await getBookmarkContext();
+function validateSavedLibraryMove(payload, context) {
+  const node = context.nodeMap.get(payload.captureId);
+  if (!isFolder(node)) throw new Error("Saved window not found. Refresh the manager.");
   const target = writableFolder(payload.folderId, context);
   if (!isDescendantOrSelf(target.id, context.area.managedRoot.id, context.nodeMap)) {
     throw new Error("Choose a folder inside Library.");
@@ -1088,7 +1088,54 @@ async function moveSavedItemsToLibrary(payload = {}) {
       throw new Error("These saved items cannot be moved to that folder.");
     }
   }
-  return bulkMove({ ids, folderId: target.id });
+  return { ids, target, contents };
+}
+
+async function moveSavedItemsToLibrary(payload = {}) {
+  await getSavedWindow(payload.captureId);
+  const initial = await getBookmarkContext();
+  const selection = validateSavedLibraryMove(payload, initial);
+  const transferId = `${Date.now()}-${Math.random()}`;
+  const planned = selection.ids.map((id) => {
+    const node = initial.nodeMap.get(id);
+    return { id, oldParentId: node.parentId, oldIndex: node.index };
+  });
+  const completed = [];
+  const removed = new Set();
+  const snapshot = (moves) => ({ action: "move", transferId,
+    label: `Moved ${moves.length} item${moves.length === 1 ? "" : "s"}`, moves });
+  const previousUndo = await storageGet({ [STORAGE_KEYS.UNDO]: null });
+  await setUndoSnapshot(snapshot(planned));
+  try {
+    await withInternalMutation(async () => {
+      for (const id of selection.ids) {
+        // Chrome has no bookmark transaction: revalidate immediately before each native move.
+        const context = await getBookmarkContext();
+        validateSavedLibraryMove({ ...payload,
+          expectedIds: payload.bookmarkId ? [id] : selection.ids.filter((item) => !removed.has(item)),
+          expectedContents: selection.contents.filter(([item]) => !removed.has(item))
+        }, context);
+        const node = context.nodeMap.get(id);
+        const subtreeIds = [];
+        walk(node, (item) => subtreeIds.push(item.id));
+        const move = planned.find((item) => item.id === id);
+        await chromeCall(chrome.bookmarks.move.bind(chrome.bookmarks), id, { parentId: payload.folderId });
+        completed.push(move);
+        for (const item of subtreeIds) removed.add(item);
+      }
+    });
+  } catch (error) {
+    const current = await storageGet({ [STORAGE_KEYS.UNDO]: null });
+    if (current[STORAGE_KEYS.UNDO]?.transferId === transferId) {
+      if (completed.length) await setUndoSnapshot(snapshot(completed));
+      else if (previousUndo[STORAGE_KEYS.UNDO]) await storageSet({ [STORAGE_KEYS.UNDO]: previousUndo[STORAGE_KEYS.UNDO] });
+      else await storageRemove(STORAGE_KEYS.UNDO);
+    }
+    throw new Error(`${completed.length ? `Moved ${completed.length} items before stopping. Undo is available. ` : ""}${error.message}`);
+  }
+  const current = await storageGet({ [STORAGE_KEYS.UNDO]: null });
+  if (current[STORAGE_KEYS.UNDO]?.transferId === transferId) await setUndoSnapshot(snapshot(completed));
+  return { moved: completed.length, folder: selection.target };
 }
 
 async function createFolder(payload = {}) {
