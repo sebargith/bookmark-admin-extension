@@ -5,6 +5,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { createFixture, copy } = require("./helpers/chrome-fixture.cjs");
 const verifySelectionUI = require("./helpers/selection-ui.cjs");
+const verifySearchFiltersUI = require("./helpers/search-filters-ui.cjs");
 const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright");
 
 (async () => {
@@ -94,6 +95,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
       assertions += 1;
     };
     await waitRows(2);
+    assertions += await verifySearchFiltersUI({ page, fixture, artifacts });
     assertions += await verifySelectionUI({ page, fixture, artifacts });
     const quickSaveSettings = copy(fixture.storage.settings);
     const navigate = async (action) => {
