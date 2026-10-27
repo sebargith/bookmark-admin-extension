@@ -18,6 +18,7 @@ let bookmarkRefreshTimer = null;
 let metadataWriteQueue = Promise.resolve();
 let navigationWriteQueue = Promise.resolve();
 let savedWindowWriteQueue = Promise.resolve();
+let bookmarkBatchQueue = Promise.resolve();
 const reopeningWindows = new Map();
 
 function updateSavedWindowRecords(root, patches = {}) {
@@ -1362,6 +1363,119 @@ async function bulkRename(payload = {}) {
   return { renamed: renames.length };
 }
 
+function bookmarkSelectionSnapshot(node) {
+  return { id: node.id, parentId: node.parentId, title: node.title || "", url: node.url, index: node.index };
+}
+
+function validateBookmarkBatch(payload, context, completed = []) {
+  if (!["move", "delete", "rename"].includes(payload.action)) throw new Error("Invalid bookmark action.");
+  if (!Array.isArray(payload.ids) || !payload.ids.length || payload.ids.length > 1000 ||
+      new Set(payload.ids).size !== payload.ids.length || payload.ids.some((id) => typeof id !== "string")) {
+    throw new Error("Select between 1 and 1000 distinct bookmarks.");
+  }
+  if (!Array.isArray(payload.expected) || payload.expected.length !== payload.ids.length ||
+      new Set(payload.expected.map((item) => item?.id)).size !== payload.ids.length) {
+    throw new Error("Review the bookmark selection before continuing.");
+  }
+  const expected = new Map(payload.expected.map((item) => [item?.id, item]));
+  const completedIds = new Set(completed.map((item) => item.before.id));
+  const nodes = [];
+  for (const id of payload.ids) {
+    const previous = expected.get(id);
+    if (!previous) throw new Error("Review the bookmark selection before continuing.");
+    if (completedIds.has(id)) continue;
+    const node = context.nodeMap.get(id);
+    if (!node?.url || !canModifyNode(node, context)) throw new Error("Selected bookmarks changed, are missing, or are read-only. Cancel and review the selection.");
+    const removedBefore = payload.action === "rename" ? 0 : completed.filter((item) =>
+      item.before.parentId === previous.parentId && item.before.index < previous.index).length;
+    if (node.parentId !== previous.parentId || node.url !== previous.url || (node.title || "") !== previous.title ||
+        Number.isInteger(previous.index) && node.index !== previous.index - removedBefore) {
+      throw new Error("Selected bookmarks changed. Cancel and review the selection.");
+    }
+    nodes.push(node);
+  }
+  let target;
+  if (payload.action === "move") {
+    target = writableFolder(payload.folderId, context);
+    const ancestors = [];
+    let parent = target;
+    while (parent && parent.id !== context.root.id) { ancestors.unshift(parent.id); parent = context.nodeMap.get(parent.parentId); }
+    if (JSON.stringify(payload.destinationPath) !== JSON.stringify(ancestors)) throw new Error("Destination moved. Cancel and choose the folder again.");
+  }
+  if (payload.action === "rename" && !["prefix", "suffix", "replace"].includes(payload.mode)) throw new Error("Choose a rename mode.");
+  const text = String(payload.text || "");
+  const find = String(payload.find || "");
+  if (payload.action === "rename" && (!text.trim() && payload.mode !== "replace" || payload.mode === "replace" && !find)) {
+    throw new Error("Enter the text to rename these bookmarks.");
+  }
+  const changes = nodes.map((node) => {
+    const before = bookmarkSelectionSnapshot(node);
+    if (payload.action === "move") return node.parentId === target.id ? null : { before };
+    if (payload.action === "delete") return { before };
+    const after = safeTitle(payload.mode === "prefix" ? text + before.title : payload.mode === "suffix" ? before.title + text : before.title.split(find).join(text));
+    if (!after || after.length > 1000) throw new Error("Every resulting title must contain between 1 and 1000 characters.");
+    return after === before.title ? null : { before, after };
+  }).filter(Boolean);
+  return { changes, target };
+}
+
+async function previewBookmarkBatch(payload = {}) {
+  const context = await getBookmarkContext();
+  const { changes } = validateBookmarkBatch(payload, context);
+  return { count: changes.length, unchanged: payload.ids.length - changes.length,
+    examples: changes.slice(0, 3).map((item) => ({ before: item.before.title, after: item.after || item.before.title })) };
+}
+
+function applyBookmarkBatch(payload = {}) {
+  const request = clone(payload);
+  const task = bookmarkBatchQueue.then(() => executeBookmarkBatch(request));
+  bookmarkBatchQueue = task.catch(() => {});
+  return task;
+}
+
+async function executeBookmarkBatch(payload) {
+  if (payload.confirmed !== true) throw new Error("Confirm the selected bookmark action first.");
+  const initial = await getBookmarkContext();
+  const plan = validateBookmarkBatch(payload, initial);
+  if (!plan.changes.length) throw new Error("No bookmarks would change.");
+  const changes = plan.changes.sort((a, b) => a.before.parentId.localeCompare(b.before.parentId) || a.before.index - b.before.index);
+  const operationId = `${Date.now()}-${Math.random()}`;
+  const previousUndo = await storageGet({ [STORAGE_KEYS.UNDO]: null });
+  const undo = (items) => {
+    const snapshot = { action: payload.action, operationId, label: `${payload.action === "move" ? "Moved" : payload.action === "delete" ? "Deleted" : "Renamed"} ${items.length} bookmarks` };
+    if (payload.action === "move") snapshot.moves = items.map(({ before }) => ({ id: before.id, oldParentId: before.parentId, oldIndex: before.index }));
+    if (payload.action === "rename") snapshot.renames = items.map(({ before, after }) => ({ id: before.id, oldTitle: before.title, newTitle: after }));
+    if (payload.action === "delete") snapshot.snapshots = items.map(({ before }) => ({ node: before, parentId: before.parentId, index: before.index }));
+    return snapshot;
+  };
+  const completed = [];
+  await setUndoSnapshot(undo(changes));
+  try {
+    await withInternalMutation(async () => {
+      for (const change of changes) {
+        const context = await getBookmarkContext();
+        const current = validateBookmarkBatch(payload, context, completed);
+        if (!current.changes.some((item) => item.before.id === change.before.id)) throw new Error("Selected bookmarks changed. Cancel and review the selection.");
+        if (payload.action === "move") await chromeCall(chrome.bookmarks.move.bind(chrome.bookmarks), change.before.id, { parentId: current.target.id });
+        if (payload.action === "delete") await chromeCall(chrome.bookmarks.remove.bind(chrome.bookmarks), change.before.id);
+        if (payload.action === "rename") await chromeCall(chrome.bookmarks.update.bind(chrome.bookmarks), change.before.id, { title: change.after });
+        completed.push(change);
+      }
+    });
+  } catch (error) {
+    const stored = await storageGet({ [STORAGE_KEYS.UNDO]: null });
+    if (stored[STORAGE_KEYS.UNDO]?.operationId === operationId) {
+      if (completed.length) await setUndoSnapshot(undo(completed));
+      else if (previousUndo[STORAGE_KEYS.UNDO]) await storageSet({ [STORAGE_KEYS.UNDO]: previousUndo[STORAGE_KEYS.UNDO] });
+      else await storageRemove(STORAGE_KEYS.UNDO);
+    }
+    throw new Error(`${completed.length ? `Completed ${completed.length} bookmarks before stopping. ` : ""}${error.message}`);
+  }
+  const stored = await storageGet({ [STORAGE_KEYS.UNDO]: null });
+  if (stored[STORAGE_KEYS.UNDO]?.operationId === operationId) await setUndoSnapshot(undo(completed));
+  return { changed: completed.length, unchanged: payload.ids.length - completed.length, action: payload.action };
+}
+
 async function sortFolder(payload = {}) {
   const context = await getBookmarkContext();
   const folder = writableFolder(payload.folderId || context.area.managedRoot.id, context);
@@ -1948,6 +2062,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         break;
       case "bulkRename":
         result = await bulkRename(payload);
+        break;
+      case "previewBookmarkBatch":
+        result = await previewBookmarkBatch(payload);
+        break;
+      case "applyBookmarkBatch":
+        result = await applyBookmarkBatch(payload);
         break;
       case "sortFolder":
         result = await sortFolder(payload);
