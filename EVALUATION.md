@@ -273,3 +273,76 @@ Chrome APIs, not a loaded-extension/native API integration test or a security
 certification. Native operations are not transactional; per-move conflict checks
 cannot provide atomic locking. MV3 service-worker lifecycle and actual native
 bookmark/window operations remain unverified.
+
+## Phase 6: Selection and bulk actions
+
+Implementation commits: `464a8ba` (validated native batch operations) and
+`29f162d` (compact selection, contextual controls, dialogs and integration checks).
+Commit `4e1b6c0` adds opt-in original-ID verification for batch-delete recovery.
+
+Selection is limited to visible main-list bookmarks, with hover/focus/touch
+checkboxes, Ctrl/Cmd toggles, Shift visual ranges, Space/Shift+Space, scoped
+Ctrl/Cmd+A, F2 rename, Delete confirmation and Escape clearing. View/folder changes
+clear selection; filters and external refresh prune hidden or removed IDs.
+Sorting preserves selection. Read-only items disable native mutations.
+
+Contextual actions use the existing modal layer. Move has a native-ID destination
+picker; rename previews prefix/suffix/text replacement asynchronously; delete
+requires confirmation. Selected-only checking/indexing is separate from ordinary
+visible-list actions. Batch dragging is disabled rather than moving one selected
+item unexpectedly. Selection/preview drafts are not persisted.
+
+New worker requests serialize native batches of at most 1000 bookmarks and
+validate all selected snapshots before any mutation, then revalidate remaining
+parent/title/URL/index and target ancestry before each native operation. Confirmed
+native changes preserve IDs/URL metadata where applicable. Partial failures retain
+undo for successful changes only; failures before any change restore prior undo
+when it still belongs to the request. These checks do not provide atomic locking.
+
+Two additional recovery tests simulate persisted batch-delete intent before any
+deletion and after one deletion. Undo skips original native IDs that still exist,
+so surviving bookmarks are not duplicated. Legacy delete undo remains unchanged.
+This is synthetic recovery coverage, not an actual browser-termination test.
+
+Verification: 56 unit tests and 289 browser assertions pass with synthetic data
+and zero page errors. Coverage includes keyboard/range selection, filtering,
+readonly controls, preview-before-mutation, batch move/rename/delete and undo,
+stale confirmations, overlapping requests, storage failure and partial failure.
+Desktop and 390px selection and rename dialogs have been visually checked.
+
+Initial independent evaluation at `4e1b6c0`: functionality 9/10, visuals 8/10,
+usability 7/10; arithmetic overall 8.00/10. The evaluator reran all 56 unit tests
+and 289 browser assertions without page errors, inspected selection and baseline
+screenshots, and independently checked out-of-order previews, pending-submit
+protection, range union, input shortcut scope, selected-only Check/Index, limits,
+partial undo, stale snapshots and recovery from generated persisted delete intent.
+
+An optional revision (`43855b0`) addresses all three findings: keyboard-opened
+menus now anchor to their trigger and focus the first action; arrows/Home/End
+navigate, Escape restores the trigger, and Tab closes the menu before leaving.
+Destructive action text uses a lighter danger color. Failed submissions explicitly
+focus Cancel after refresh, while Undo refresh restores list focus. Regressions
+cover menu placement/focus, contrast above 4.5:1 against the dialog surface, and
+partial-delete failure focus/undo. All 56 unit tests and 300 browser assertions
+pass without page errors.
+
+| Category | Final Score |
+| --- | ---: |
+| Functionality | 9/10 |
+| Visuals | 8/10 |
+| Usability | 8/10 |
+| Arithmetic Overall | 8.33/10 |
+
+Outcome: independently accepted at `43855b0` after one optional revision, with no
+second revision required. The evaluator independently reran all 56 unit tests
+and 300 browser assertions without page errors and resolved all three findings.
+Additional checks covered Shift+Tab, Home/End, More/Clear focus across refresh,
+menu placement at 390x600, failure/undo focus and destructive text contrast of
+approximately 9.25:1 including the composited button background. Updated menu,
+failure, delete and mobile screenshots were inspected. No new actionable findings
+were identified. Narrow layouts remain relatively cramped.
+
+Evidence limits remain unchanged: isolated real Chrome rendering uses synthetic
+APIs. No personal profile was accessed. Loaded-extension/native API integration,
+MV3 lifecycle, actual browser crashes, real touch/macOS and screen-reader behavior,
+and security certification are not covered by these checks.

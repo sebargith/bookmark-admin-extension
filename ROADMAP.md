@@ -114,10 +114,38 @@ and 232 browser assertions, plus targeted concurrency, focus and destination
 probes, without page errors or new actionable findings. Native loaded-extension
 integration remains unverified. See [EVALUATION.md](EVALUATION.md).
 
-## 6. Selection and bulk actions (planned)
+## 6. Selection and bulk actions (complete)
 
-Reveal bulk actions only during selection. Support familiar range selection and
-multiple selection without cluttering ordinary browsing.
+Implemented ephemeral main-list bookmark selection, hover/focus/touch checkboxes,
+visible-results select-all, Ctrl/Cmd toggles, Shift ranges in visual order, keyboard
+selection and layered Escape clearing. Sorting retains native selected IDs;
+changing view/folder clears them, and filtering/external refresh drops hidden or
+removed selections. Normal title clicks still open bookmarks outside selection.
+
+Move, Rename and Delete controls appear only during selection, with destination
+pickers, affected-item counts, asynchronous rename previews and deletion
+confirmation. Read-only selections disable native changes. Selected-only
+check/index actions live in a compact menu; folder sorting remains separate.
+
+Serialized bookmark-only batch mutations validate frozen native snapshots and
+destination ancestry immediately before each native operation. Batches reject
+stale/read-only/missing entries and stop on detected conflicts. Undo covers only
+successful operations after partial failure; no-change failures preserve prior
+undo when still owned by the request. Limit: 1000 bookmarks per native action.
+
+Batch-delete undo also checks whether each original native ID is already present,
+so recovery from persisted intent does not duplicate undeleted bookmarks.
+
+Verification: 56 unit tests and 300 browser assertions pass with synthetic data,
+including keyboard/range selection, readonly controls, hidden-selection cleanup,
+rename previews, move/delete/rename undo, partial failures and existing manager
+regressions. Initial independent score: 8.00/10. An optional revision improves
+keyboard menu anchoring/focus, destructive-action contrast and failure focus.
+Independently accepted at 8.33/10 after one optional revision. All three findings
+were resolved; no second revision was required. The evaluator reran all 56 unit
+tests and 300 browser assertions and checked narrow menus, focus recovery and
+composited contrast. Native loaded-extension integration remains unverified. See
+[EVALUATION.md](EVALUATION.md).
 
 ## 7. Search and filters (planned)
 

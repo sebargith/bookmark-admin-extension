@@ -25,5 +25,9 @@ Before publishing changes:
   - confirm/cancel reopening a saved window; verify order, repeated URLs and unsupported-link skips
   - move one captured bookmark and all capture contents to Library, then undo each operation
   - move a capture into Library and verify its own folder is not offered as a transfer destination
+  - select bookmarks with Ctrl/Cmd, Shift ranges and checkboxes; confirm hidden selections are discarded after filtering
+  - verify selection controls stay hidden during ordinary browsing and read-only selections cannot mutate bookmarks
+  - preview/cancel/apply batch rename, move and delete, then verify native order and undo
+  - open More with Enter, navigate actions with arrows, and verify Escape/Tab and failed-submit focus recovery
   - edit notes
   - export JSON or HTML

@@ -69,6 +69,8 @@ Changing view or folder clears selection. Search/date/status changes discard hid
 
 Selections and preview drafts remain in memory and are not restored on reopen. Batch mutation requests serialize and revalidate native IDs, parent, title, URL and native index before each change. Destination moves, stale selections and read-only changes stop the operation. Undo covers successful changes only after partial failure; a no-change failure preserves the prior undo when still owned by that request. As with other native operations, this is conflict detection, not atomic locking. Batch delete undo recreates native bookmark IDs; notes remain keyed to URL. Native folder sorting stays in each folder's menu, separate from list sorting.
 
+Batch-delete undo verifies whether each original bookmark ID still exists before restoring it. This avoids duplicate survivors when recovering persisted intent from an interrupted deletion. Actual browser termination and MV3 lifecycle behavior still require loaded-extension testing.
+
 Phase-one independent evaluation: 7.3/10 after one revision. See [EVALUATION.md](EVALUATION.md) for findings, verification, and remaining test limits.
 
 Phase-two compact-list evaluation: 8.3/10 on its first review, with 23 passing unit tests and 61 passing browser assertions using synthetic data.
@@ -78,6 +80,8 @@ Phase-three on-demand details evaluation: 8.3/10 after one revision, with 26 pas
 Phase-four hierarchy and navigation-memory evaluation: 8.33/10 after one optional revision, with 29 passing unit tests and 196 passing browser assertions using synthetic data. Focus recovery, short-window scrolling, and independent manager instances were also reviewed.
 
 Phase-five saved-window evaluation: 8.33/10 after two optional revisions, with 44 passing unit tests and 232 passing browser assertions using synthetic data. Independent probes covered execution-time move conflicts, partial undo, toolbar focus, and same-folder destination rejection. Native loaded-extension integration remains unverified.
+
+Phase-six selection/batch evaluation: 8.33/10 after one optional revision, with 56 passing unit tests and 300 passing browser assertions using synthetic data. Independent probes covered stale previews, selection scope, interruption recovery, limits, partial failures, menu keyboard navigation, focus and destructive-action contrast. Native installation, actual crashes, real touch/macOS and screen-reader behavior remain unverified.
 
 Exports started from the floating manager open a dedicated extension-owned tab. The download is created there, so its contents and download link are not inserted into the underlying website. No additional permissions are required.
 
