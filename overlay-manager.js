@@ -337,6 +337,9 @@
 
   function captureNavigationFocus() {
     const active = shadow?.activeElement || document.activeElement;
+    if (els.captureBar.contains(active) && active.dataset.captureAction) {
+      return { kind: "capture", id: state.selectedFolderId, action: active.dataset.captureAction };
+    }
     const breadcrumb = active?.closest(".ba-breadcrumbs button");
     const folder = active?.closest(".ba-folder-line");
     if (!breadcrumb && !folder) return null;
@@ -351,6 +354,12 @@
 
   function restoreNavigationFocus(memory) {
     if (!memory) return;
+    if (memory.kind === "capture") {
+      const action = state.selectedFolderId === memory.id && els.captureBar.querySelector(`[data-capture-action="${memory.action}"]`);
+      const row = els.tree.querySelector(`[data-folder-id="${CSS.escape(memory.id)}"] .ba-name`);
+      (action && !action.disabled ? action : row || els.overview).focus({ preventScroll: true });
+      return;
+    }
     for (const id of memory.candidates) {
       const selector = memory.kind === "breadcrumb" ?
         `[data-location-id="${CSS.escape(id || "")}"]` :
@@ -409,11 +418,13 @@
     summary.title = capture.originalTabCount === null ? "Original capture date and count are unknown" : `${capture.originalTabCount} tabs originally saved`;
     const open = document.createElement("button");
     open.type = "button";
+    open.dataset.captureAction = "open";
     open.className = "ba-button ba-blue";
     open.innerHTML = `<img src="${ICONS.open}" alt=""><span>Open window</span>`;
     open.addEventListener("click", () => openCaptureAction("open", capture).catch(showError));
     const move = document.createElement("button");
     move.type = "button";
+    move.dataset.captureAction = "move";
     move.className = "ba-button";
     move.innerHTML = `<img src="${ICONS.folderOpen}" alt=""><span>Move to Library</span>`;
     move.disabled = !capture.tabCount || state.data.readOnlyNodeIds.includes(capture.folderId);
@@ -1178,7 +1189,7 @@
         status = "Saved window renamed.";
       } else {
         const result = await send("moveSavedItemsToLibrary", { captureId: action.capture.folderId, bookmarkId: action.bookmark?.id, folderId: destination, expectedIds: action.expectedIds,
-          expectedContents: action.bookmark ? undefined : action.expectedContents });
+          expectedContents: action.expectedContents });
         status = `Moved ${result.moved} items to Library. Undo is available.`;
       }
       state.actionBusy = false;
@@ -1186,8 +1197,10 @@
       await load(status);
     } catch (error) {
       state.actionBusy = false;
+      if (!state.action) { showError(error); return; }
       controls.forEach((control) => { control.disabled = false; });
       form.querySelector(".ba-action-error").textContent = error.message;
+      if (action.type === "move") await load(error.message).catch(showError);
     }
   }
 

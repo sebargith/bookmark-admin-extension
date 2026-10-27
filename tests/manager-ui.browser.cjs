@@ -226,8 +226,11 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await actionDialog.getByRole("button", { name: "Open window", exact: true }).click();
     await actionDialog.locator(".ba-action-error").filter({ hasText: /Simulated window failure/ }).waitFor();
     fixture.chrome.windows.create = createWindow;
+    const repliesBeforeOpen = await page.evaluate(() => globalThis.__managerReplies);
     await actionDialog.getByRole("button", { name: "Open window", exact: true }).click();
     await actionDialog.waitFor({ state: "hidden" });
+    await page.waitForFunction((before) => globalThis.__managerReplies > before, repliesBeforeOpen);
+    assert.equal(await page.locator('.ba-capture-bar [data-capture-action="open"]').evaluate((node) => node === document.activeElement), true);
     assert.deepEqual(fixture.windowsCreated[0].url, ["https://example.test/210", "https://example.test/211"]);
     await page.locator('[data-folder-id="110"] .ba-icon-btn').click();
     await page.locator(".ba-menu button", { hasText: /^Rename$/ }).click();
@@ -258,6 +261,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await waitRows(0);
     assert.equal(fixture.find("110").children.length, 0);
     assert.match(await page.locator(".ba-capture-bar").innerText(), /0 tabs/);
+    assert.equal(await page.locator('[data-folder-id="110"] .ba-name').evaluate((node) => node === document.activeElement), true);
     await page.locator(".ba-undo").click();
     await waitRows(2);
     await openCapture();
@@ -282,7 +286,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await waitRows(3);
     await view("Library");
     await waitRows(2);
-    assertions += 26;
+    assertions += 28;
     assert.equal(await page.locator(".ba-detail").isVisible(), false);
     const fullListWidth = (await page.locator(".ba-bookmark-list").boundingBox()).width;
     const before = copy(fixture.root);
