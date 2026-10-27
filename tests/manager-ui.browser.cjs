@@ -6,6 +6,7 @@ const { pathToFileURL } = require("node:url");
 const { createFixture, copy } = require("./helpers/chrome-fixture.cjs");
 const verifySelectionUI = require("./helpers/selection-ui.cjs");
 const verifyNodeActionsUI = require("./helpers/node-actions-ui.cjs");
+const verifyAccessibilityUI = require("./helpers/accessibility-ui.cjs");
 const verifySearchFiltersUI = require("./helpers/search-filters-ui.cjs");
 const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright");
 
@@ -97,6 +98,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
       assertions += 1;
     };
     await waitRows(2);
+    assertions += await verifyAccessibilityUI({ page, fixture, artifacts });
     assertions += await verifyNodeActionsUI({ page, fixture, artifacts });
     assertions += await verifySearchFiltersUI({ page, fixture, artifacts });
     assertions += await verifySelectionUI({ page, fixture, artifacts });
@@ -651,6 +653,13 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     overlay.on("pageerror", (error) => errors.push(error.message));
     await overlay.goto(new URL("popup.html", baseUrl).href);
     await overlay.evaluate(() => {
+      const button = document.createElement("button");
+      button.id = "host-focus-return";
+      button.textContent = "Synthetic host control";
+      document.body.append(button);
+      button.focus();
+    });
+    await overlay.evaluate(() => {
       globalThis.__hostDownloadLinks = [];
       globalThis.__hostBlobUrls = [];
       new MutationObserver((changes) => changes.forEach((change) => change.addedNodes.forEach((node) => {
@@ -711,6 +720,8 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     assert.equal(await overlay.locator("#bookmark-admin-overlay").count(), 0);
     assert.equal(fixture.storage.metadataByUrl["https://example.test/200"].notes, "Overlay draft saved on close");
     assert.equal(await overlay.evaluate(() => globalThis.__bookmarkListenerCount()), 0);
+    assert.equal(await overlay.evaluate(() => document.activeElement?.id), "host-focus-return");
+    assertions += 1;
     await overlay.addScriptTag({ path: path.join(repo, "overlay-manager.js") });
     await overlay.waitForFunction(() => getComputedStyle(document.getElementById("bookmark-admin-overlay")).visibility === "visible");
     await overlay.addScriptTag({ path: path.join(repo, "overlay-manager.js") });
