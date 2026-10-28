@@ -281,7 +281,9 @@ test("long page and folder titles preserve compact layout without control clippi
 test("normal and reduced-motion screenshots render real popup without decorative blobs", async () => {
   const backgrounds = await page.locator("body, .mini-shell, .brand-mark").evaluateAll((elements) =>
     elements.map((element) => getComputedStyle(element).backgroundImage));
-  assert.deepEqual(backgrounds, ["none", "none", "none"]);
+  assert.equal(backgrounds[0], "none");
+  assert.ok(backgrounds[1].includes("linear-gradient"));
+  assert.ok(backgrounds[2].includes("linear-gradient"));
   for (const [motion, filename] of [["no-preference", "popup-normal.png"], ["reduce", "popup-reduced.png"]]) {
     await page.emulateMedia({ reducedMotion: motion });
     await page.locator("#saveFolder").focus();
@@ -290,4 +292,28 @@ test("normal and reduced-motion screenshots render real popup without decorative
   }
   assert.deepEqual(errors, []);
   console.log(`Popup screenshots: ${artifacts}`);
+});
+
+test("popup retains intrinsic width from a narrow bootstrap viewport", async () => {
+  await page.setViewportSize({ width: 180, height: 600 });
+  await page.reload();
+  await page.waitForFunction(() => !document.querySelector("#saveToFolder").disabled);
+  const size = await page.evaluate(() => ({
+    documentWidth: document.documentElement.scrollWidth,
+    bodyWidth: document.body.getBoundingClientRect().width,
+    shellWidth: document.querySelector(".mini-shell").getBoundingClientRect().width,
+    headingHeight: document.querySelector("h1").getBoundingClientRect().height,
+    lineHeight: parseFloat(getComputedStyle(document.querySelector("h1")).lineHeight)
+  }));
+  assert.equal(size.bodyWidth, 360);
+  assert.equal(size.shellWidth, 360);
+  assert.equal(size.documentWidth, 360);
+  assert.ok(size.headingHeight <= size.lineHeight + 1, "heading stays on one line");
+  // Simulate the popup host adopting the document's intrinsic size, not a tab layout.
+  await page.setViewportSize({ width: size.documentWidth, height: 600 });
+  await assertLayout();
+  for (const id of ["saveToFolder", "saveToAll", "createFolderMini"]) {
+    assert.ok(await page.locator(`#${id}`).evaluate((node) => node.clientWidth >= 68), id);
+  }
+  await page.screenshot({ path: path.join(artifacts, "popup-bootstrap-width.png") });
 });
