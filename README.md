@@ -22,6 +22,7 @@ Chrome will create a managed bookmark root named `Bookmark Admin`. Clicking the 
 - Move one captured bookmark or a capture's contents into a Library folder using a destination picker, preserving native IDs, notes, folder structure, and move undo.
 - Switch between Library, Saved Windows, and All Bookmarks without copying or moving bookmarks.
 - Open the movable full manager overlay from the compact popup, the toolbar icon's right-click menu, page context menu, or `Alt+Shift+M`. Restricted pages use a manager tab instead.
+- Use nearly the full browser viewport, resize by the corner, or maximize/restore with the titlebar button. Double-clicking the titlebar also toggles maximize.
 - Blur the page behind the manager overlay and close it by clicking outside or pressing `Esc`.
 - Create folders and move bookmarks or folders by drag and drop.
 - Search title, URL, folder path, saved notes, and automatically extracted page keywords.
@@ -32,7 +33,7 @@ Chrome will create a managed bookmark root named `Bookmark Admin`. Clicking the 
 - Browse folders in the sidebar and expand subfolders inline in the main contents list, with shared bookmark selection and counts.
 - Navigate with clickable folder breadcrumbs, independent disclosure arrows, and expand/collapse-all controls. Empty folders have no active disclosure arrow.
 - Open the manager to Recently saved, newest first, across all Chrome folders. Folder locations remain remembered when switching views and expanded folders are stored locally. New popup saves always start in Other bookmarks.
-- Browse consistent compact bookmark rows with wider titles, narrow dates, and full titles/URLs on hover. Only link issues show a list indicator; notes, use counts, and generated keywords remain in the detail panel and search.
+- Browse 30px single-line bookmark rows with 13px titles, a separate folder column on wider windows, narrow dates, and full titles/paths/URLs on hover. Only link issues show a list indicator; notes, use counts, and generated keywords remain in the detail panel and search.
 - Show website favicons beside bookmark titles using Chrome's favicon service, with a generic bookmark fallback. Icons load as rows approach the visible list.
 - Select visible list bookmarks with compact checkboxes, Ctrl/Cmd-click, and Shift ranges. Batch Move, Rename and Delete controls appear only during selection.
 - Preview prefix/suffix/text-replacement renames, pick move destinations by full folder path, confirm deletions, and undo successful batch changes.
@@ -57,11 +58,21 @@ The extension asks for:
 
 ## Notes
 
-The manager has three views:
+The manager has four views:
 
-- **Library** shows the existing `Bookmark Admin` folder and its descendants. The compact popup still saves into this library.
+- **Recently saved** is the initial view, showing bookmarks across all Chrome folders, newest first.
+- **Library** shows the existing `Bookmark Admin` folder and its descendants. New popup saves start in Other bookmarks and can be moved into Library or another folder.
 - **Saved Windows** recognizes `nuevoX` folders directly on either local or account bookmarks bars. Once recognized, their native folder IDs are remembered locally, so renaming or moving them does not remove them from this view. Nested captures are listed within their ancestor capture instead of duplicating the same bookmark tree.
 - **All Bookmarks** shows the complete native tree, including other, mobile, and managed bookmarks supplied by Chrome. Chrome's special folders and read-only managed nodes are protected.
+
+Version 0.5.5 combines search and window controls in one compact header and uses
+a fixed 264px folder sidebar. The default window leaves a 12px margin around the
+browser viewport; outside-click dismissal still works. Row menus appear on hover
+or keyboard focus (and stay visible on touch devices). Full paths remain in
+tooltips and Properties. Saved Windows retains its capture details, while the
+ordinary folder tree uses single-line entries. The idle footer is hidden until
+there is a status message or an Undo action. The quick-save popup and existing
+blue/violet palette are unchanged.
 
 Navigation counts represent bookmarks. Search and filters apply within the active view and selected folder, including its descendants. Export includes that view or folder, regardless of search filters. Changes made in Chrome update the open manager automatically. These views do not create extra copies or move existing bookmarks. See [ROADMAP.md](ROADMAP.md) for upcoming improvements.
 

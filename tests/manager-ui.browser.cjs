@@ -366,7 +366,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
       titleWidth: row.querySelector(".ba-bookmark-title").getBoundingClientRect().width,
       width: row.getBoundingClientRect().width
     })));
-    assert.ok(initialGeometry.every((row) => row.height === 40 && row.titleWidth > row.width * 0.6));
+    assert.ok(initialGeometry.every((row) => row.height === 30 && row.titleWidth > row.width * 0.6));
     await page.getByRole("button", { name: "Options for Library saved page", exact: true }).click();
     await page.locator(".ba-menu button", { hasText: /^Notes$/ }).click();
     assert.equal(await page.locator(".ba-detail textarea").inputValue(), "Synthetic notes retained outside the compact list");
@@ -590,6 +590,38 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await page.evaluate(() => globalThis.__bookmarkChange());
     await view("All Bookmarks");
     await waitRows(51);
+    const density = await page.locator('.ba-bookmark-list').evaluate(list => {
+      const rect = list.getBoundingClientRect();
+      return {
+        visibleRows: [...list.querySelectorAll('.ba-bookmark-row')].filter(row => {
+          const bounds = row.getBoundingClientRect();
+          return bounds.top >= rect.top && bounds.bottom <= rect.bottom;
+        }).length,
+        top: rect.top,
+        width: rect.width
+      };
+    });
+    assert.ok(density.visibleRows >= 28, JSON.stringify(density));
+    assert.ok(density.top < 100, JSON.stringify(density));
+    assert.ok(density.width > 1100, JSON.stringify(density));
+    const defaultBounds = await page.locator('.ba-window').boundingBox();
+    await page.getByRole('button', { name: 'Maximize manager', exact: true }).click();
+    assert.deepEqual(await page.locator('.ba-window').boundingBox(), { x: 0, y: 0, width: 1440, height: 1000 });
+    await page.getByRole('button', { name: 'Restore window', exact: true }).click();
+    assert.deepEqual(await page.locator('.ba-window').boundingBox(), defaultBounds);
+    assertions += 5;
+    await page.setViewportSize({ width: 2541, height: 1381 });
+    await page.screenshot({ path: path.join(artifacts, 'all-wide-desktop.png'), animations: 'disabled' });
+    const wideDensity = await page.locator('.ba-bookmark-list').evaluate(list => {
+      const rect = list.getBoundingClientRect();
+      return [...list.querySelectorAll('.ba-bookmark-row')].filter(row => {
+        const bounds = row.getBoundingClientRect();
+        return bounds.top >= rect.top && bounds.bottom <= rect.bottom;
+      }).length;
+    });
+    assert.ok(wideDensity >= 40, `Only ${wideDensity} complete rows fit on a large desktop`);
+    assertions += 1;
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.screenshot({ path: path.join(artifacts, "all-desktop.png"), animations: "disabled" });
     for (const viewport of [{ width: 1440, height: 1000, resize: true }, { width: 1000, height: 800 }, { width: 390, height: 844 }]) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
@@ -604,6 +636,23 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
         const resized = await manager.boundingBox();
         assert.ok(resized.width < initial.width - 100 && resized.height < initial.height - 50);
         assertions += 1;
+        const brand = await page.locator('.ba-brand').boundingBox();
+        await page.mouse.move(brand.x + 70, brand.y + 12);
+        await page.mouse.down();
+        await page.mouse.move(brand.x + 190, brand.y + 80, { steps: 5 });
+        await page.mouse.up();
+        const moved = await manager.boundingBox();
+        assert.ok(moved.x > resized.x + 100 && moved.y > resized.y + 50);
+        await page.getByRole('button', { name: 'Maximize manager', exact: true }).click();
+        await page.setViewportSize({ width: 1000, height: 800 });
+        assert.deepEqual(await manager.boundingBox(), { x: 0, y: 0, width: 1000, height: 800 });
+        await page.getByRole('button', { name: 'Restore window', exact: true }).click();
+        assert.equal(await manager.evaluate(node => {
+          const bounds = node.getBoundingClientRect();
+          return bounds.left >= 0 && bounds.top >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight;
+        }), true);
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        assertions += 3;
       } else {
         await manager.evaluate((node) => { node.style.width = ""; node.style.height = ""; });
       }
@@ -616,7 +665,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
           rowOverlap: rowRects.some((rect, index) => index > 0 && rect.top < rowRects[index - 1].bottom),
           horizontalOverflow: [...document.querySelectorAll(".ba-navigation, .ba-toolbar, .ba-bookmark-list")]
             .some((node) => node.scrollWidth > node.clientWidth + 1),
-          uniformRows: rowRects.every((rect) => rect.height === 40),
+          uniformRows: rowRects.every((rect) => rect.height === 30),
           assetsLoaded: [...document.querySelectorAll("img")].every((node) => node.complete && node.naturalWidth > 0)
         };
       });

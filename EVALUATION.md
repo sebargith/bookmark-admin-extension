@@ -601,3 +601,26 @@ were verified in both the extension manager page and injected closed shadow root
 Screenshots were inspected. Evidence: favicon-header-fix outside the repository.
 Only a local test page, synthetic bookmark and new temporary Chrome profiles were
 used; no personal browser data was accessed. No new permissions were added.
+
+## Compact manager - version 0.5.5
+
+Replaces the capped floating workspace with a viewport-sized default, one shared
+search/titlebar, a 264px folder sidebar and 30px single-line bookmark rows. Title
+text remains 13px. Folder names occupy a secondary column on wide windows; full
+paths remain available on hover and in Properties. Menus appear on hover/focus,
+with persistent controls on touch devices. Idle footer space is removed. The
+popup, established palette, native bookmark storage and permissions are unchanged.
+
+Maximize/restore and titlebar double-click preserve manually resized bounds.
+Dragging and viewport/element resizing keep the restored window on screen. The
+moved toolbar remains inert behind a modal details drawer. New-folder controls
+retain accessible names after their visible text is replaced by the folder icon.
+
+Validation: 83 unit tests and 490 manager browser assertions passed, with no page
+errors. Density checks confirm at least 28 complete rows at 1440x1000 and 40 at
+2541x1381. Checks include dragging, resizing, maximize/restore after changing
+viewport size, selection, filters, menus, notes, exports, accessibility and narrow
+layouts. Screenshots were inspected. The loaded-extension favicon regression
+also passed in the manager page and closed-shadow overlay. All browser data is
+synthetic; evidence is outside the repository in compact-manager. No independent
+evaluator was used for this change.

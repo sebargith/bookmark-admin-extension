@@ -23,6 +23,7 @@
   };
   const state = {
     data: null,
+    folderNames: new Map(),
     view: "recent",
     selectedByView: { recent: null, library: null, windows: null, all: null },
     selectedFolderId: null,
@@ -44,6 +45,7 @@
     detailMode: "notes",
     detailRenderKey: null,
     detailDrawer: false,
+    restoreBounds: null,
     dragging: null,
     loadSequence: 0,
     refreshTimer: null,
@@ -80,12 +82,17 @@
     <div class="ba-backdrop" data-close="true"></div>
     <section class="ba-window" role="dialog" aria-modal="true" aria-label="Bookmark Admin">
       <header class="ba-titlebar" data-drag="true">
-        <div class="ba-mark" aria-hidden="true"><img src="${ICONS.app}" alt=""></div>
-        <div class="ba-title">
-          <h1>Bookmark Admin</h1>
-          <p class="ba-current">Loading bookmarks...</p>
+        <div class="ba-brand">
+          <div class="ba-mark" aria-hidden="true"><img src="${ICONS.app}" alt=""></div>
+          <div class="ba-title">
+            <h1>Bookmark Admin</h1>
+            <p class="ba-current">Loading bookmarks...</p>
+          </div>
         </div>
-        <button class="ba-icon-btn ba-close" type="button" aria-label="Close">x</button>
+        <div class="ba-window-actions">
+          <button class="ba-icon-btn ba-maximize" type="button" aria-label="Maximize manager" title="Maximize manager"><span aria-hidden="true">&#9633;</span></button>
+          <button class="ba-icon-btn ba-close" type="button" aria-label="Close" title="Close">x</button>
+        </div>
       </header>
       <nav class="ba-navigation" role="tablist" aria-label="Bookmark views">
         <button class="ba-view-tab" id="ba-view-recent" role="tab" type="button" data-view="recent" aria-selected="true" aria-controls="ba-manager-content">
@@ -134,7 +141,7 @@
         <section class="ba-panel ba-library-panel">
           <div class="ba-panel-header">
             <h2 class="ba-tree-title">Library</h2>
-            <button class="ba-button ba-new-folder" type="button"><img src="${ICONS.folderOpen}" alt=""><span>New folder</span></button>
+            <button class="ba-button ba-new-folder" type="button" aria-label="New folder"><img src="${ICONS.folderOpen}" alt=""><span>New folder</span></button>
           </div>
           <button class="ba-overview" type="button" aria-pressed="true"><span class="ba-overview-label">All in Library</span><span class="ba-overview-count"></span></button>
           <div class="ba-tree-tools">
@@ -165,8 +172,7 @@
         <aside class="ba-panel ba-detail" aria-label="Bookmark details" hidden></aside>
       </section>
       <footer class="ba-footer">
-        <span class="ba-status" role="status" aria-live="polite">Ready.</span>
-        <span class="ba-footer-hint">Right-click folders or bookmarks for actions.</span>
+        <span class="ba-status" role="status" aria-live="polite"></span>
         <button class="ba-button ba-undo" type="button" hidden><img src="${ICONS.undo}" alt=""><span>Undo</span></button>
       </footer>
       <div class="ba-action-layer" hidden></div>
@@ -180,6 +186,7 @@
     win: root.querySelector(".ba-window"),
     titlebar: root.querySelector(".ba-titlebar"),
     close: root.querySelector(".ba-close"),
+    maximize: root.querySelector(".ba-maximize"),
     current: root.querySelector(".ba-current"),
     tabs: [...root.querySelectorAll(".ba-view-tab")],
     layout: root.querySelector(".ba-layout"),
@@ -252,19 +259,28 @@
 
   // Keep navigation beside folders and all results in one contents pane.
   els.treePanel.prepend(root.querySelector(".ba-navigation"));
-  els.listPanel.prepend(root.querySelector(".ba-toolbar"));
+  els.titlebar.insertBefore(root.querySelector(".ba-toolbar"), root.querySelector(".ba-window-actions"));
+  els.listPanel.insertBefore(root.querySelector(".ba-filter-summary"), els.breadcrumbs);
+  const treeTools = root.querySelector(".ba-tree-tools");
+  treeTools.prepend(els.newFolder);
+  els.treePanel.querySelector(".ba-panel-header").append(treeTools);
   const filterPanel = document.createElement("details");
   filterPanel.className = "ba-filter-panel";
   filterPanel.innerHTML = '<summary>Filters</summary><div class="ba-filter-options"></div>';
   const filterOptions = filterPanel.lastElementChild;
   filterOptions.append(els.dateFilter, els.issueFilter, els.domainFilter, root.querySelector(".ba-duplicates-control"));
+  filterOptions.append(els.searchScope);
   const toolbar = root.querySelector(".ba-toolbar");
   toolbar.insertBefore(filterPanel, els.export);
   bindEvents();
   load().then(() => els.search.focus({ preventScroll: true })).catch(showError);
 
   function bindEvents() {
-    window.addEventListener("resize", clampOpenMenu);
+    window.addEventListener("resize", onViewportResize);
+    els.maximize.addEventListener("click", toggleMaximize);
+    els.titlebar.addEventListener("dblclick", (event) => {
+      if (!event.target.closest("button, .ba-toolbar")) toggleMaximize();
+    });
     els.newFolder.disabled = true;
     els.export.disabled = true;
     host.addEventListener("bookmark-admin-dismiss", (event) => {
@@ -383,7 +399,10 @@
     els.titlebar.addEventListener("pointerdown", beginDrag);
     chrome.storage.onChanged.addListener(onStorageChanged);
     window.addEventListener("pagehide", onPageHide);
-    state.detailResizeObserver = new ResizeObserver(syncDetailFocus);
+    state.detailResizeObserver = new ResizeObserver(() => {
+      clampWindow();
+      syncDetailFocus();
+    });
     state.detailResizeObserver.observe(els.win);
   }
 
@@ -413,6 +432,7 @@
     const navigationFocus = captureNavigationFocus();
     const oldPath = state.data ? folderTrail(state.selectedFolderId).map((node) => node.id).join("/") : null;
     state.data = data;
+    state.folderNames = new Map(data.folders.map((folder) => [folder.id, folder.title]));
     if (!state.navigationLoaded) {
       state.view = "recent";
       state.selectedByView = { ...data.navigation.selectedByView, recent: null };
@@ -777,6 +797,7 @@
       meta.className = "ba-folder-meta";
       meta.textContent = `${capture.tabCount} ${capture.tabCount === 1 ? "tab" : "tabs"} | ${captureDate(capture, true)}`;
       meta.title = captureDate(capture);
+      name.title += `\n${meta.textContent}`;
       label.append(meta);
     }
 
@@ -979,7 +1000,7 @@
     title.type = "button";
     title.className = "ba-bookmark-title";
     title.textContent = bookmarkTitle(bookmark);
-    title.title = `${bookmarkTitle(bookmark)}\n${bookmark.url}`;
+    title.title = `${bookmarkTitle(bookmark)}\n${bookmark.folderPath}\n${bookmark.url}`;
     title.addEventListener("click", (event) => {
       if (event.ctrlKey || event.metaKey || event.shiftKey || state.selectedBookmarks.size) selectBookmark(bookmark.id, event);
       else openBookmark(bookmark.id).catch(showError);
@@ -992,7 +1013,7 @@
     sub.className = "ba-bookmark-sub";
     const folder = document.createElement("span");
     folder.className = "ba-muted";
-    folder.textContent = bookmark.folderPath;
+    folder.textContent = state.folderNames.get(bookmark.folderId) || bookmark.folderPath;
     folder.title = bookmark.folderPath;
     sub.append(folder);
     meta.append(title, sub);
@@ -1171,6 +1192,7 @@
     state.detailDrawer = !els.detail.hidden && getComputedStyle(els.detailScrim).display !== "none";
     els.treePanel.inert = state.detailDrawer;
     els.listPanel.inert = state.detailDrawer;
+    toolbar.inert = state.detailDrawer;
     els.detail.setAttribute("role", state.detailDrawer ? "dialog" : "complementary");
     if (state.detailDrawer) els.detail.setAttribute("aria-modal", "true");
     else els.detail.removeAttribute("aria-modal");
@@ -2032,7 +2054,7 @@
   }
 
   function beginDrag(event) {
-    if (event.button !== 0 || event.target.closest("button, input, select, summary")) return;
+    if (state.restoreBounds || event.button !== 0 || event.target.closest("button, .ba-toolbar")) return;
     const rect = els.win.getBoundingClientRect();
     state.dragging = {
       offsetX: event.clientX - rect.left,
@@ -2058,6 +2080,37 @@
   function endDrag() {
     state.dragging = null;
     els.titlebar.removeEventListener("pointermove", dragWindow);
+  }
+
+  function toggleMaximize() {
+    if (state.restoreBounds) {
+      Object.assign(els.win.style, state.restoreBounds);
+      state.restoreBounds = null;
+      els.win.classList.remove("ba-maximized");
+      clampWindow();
+    } else {
+      state.restoreBounds = Object.fromEntries(["left", "top", "right", "width", "height"].map((key) => [key, els.win.style[key]]));
+      endDrag();
+      els.win.classList.add("ba-maximized");
+    }
+    const label = state.restoreBounds ? "Restore window" : "Maximize manager";
+    els.maximize.title = label;
+    els.maximize.setAttribute("aria-label", label);
+    els.maximize.firstElementChild.textContent = state.restoreBounds ? "\u2750" : "\u25a1";
+    clampOpenMenu();
+  }
+
+  function clampWindow() {
+    if (state.restoreBounds) return;
+    const rect = els.win.getBoundingClientRect();
+    els.win.style.left = `${Math.max(12, Math.min(rect.left, window.innerWidth - rect.width - 12))}px`;
+    els.win.style.top = `${Math.max(12, Math.min(rect.top, window.innerHeight - rect.height - 12))}px`;
+    els.win.style.right = "auto";
+  }
+
+  function onViewportResize() {
+    clampWindow();
+    clampOpenMenu();
   }
 
   function onKeyDown(event) {
@@ -2117,7 +2170,7 @@
 
   function disposeOverlay() {
     faviconObserver.disconnect();
-    window.removeEventListener("resize", clampOpenMenu);
+    window.removeEventListener("resize", onViewportResize);
     document.removeEventListener("keydown", onKeyDown, true);
     document.removeEventListener("focusin", containDrawerFocus, true);
     state.detailResizeObserver.disconnect();
