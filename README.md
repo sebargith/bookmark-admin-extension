@@ -125,4 +125,9 @@ Notes use local extension storage. Closing the panel or manager through its cont
 
 ## Development checks
 
+`node tests/favicons-native.browser.cjs` loads the real unpacked extension through
+Chrome DevTools in a new temporary profile and serves a local test favicon. It
+checks Chrome's actual favicon response and rendering in both the standalone
+manager and the closed-shadow overlay. It never loads a personal Chrome profile.
+
 Run `node --test` for synthetic Chrome API tests. Run `node tests/manager-ui.browser.cjs` with Playwright available and Chrome installed for interface checks and screenshots. An external Playwright module can be selected through `BOOKMARK_TEST_PLAYWRIGHT`; `BOOKMARK_TEST_ARTIFACTS` sets the screenshot directory. Browser checks use synthetic bookmark APIs in an isolated browser context; they do not access a personal Chrome profile or verify installation as a loaded extension.

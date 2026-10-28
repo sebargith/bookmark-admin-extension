@@ -39,14 +39,18 @@ async function getBookmarkFavicon(payload = {}) {
       iconUrl.searchParams.set("pageUrl", key);
       iconUrl.searchParams.set("size", "32");
       const response = await fetch(iconUrl.href, { credentials: "omit" });
-      if (!response.ok || !/^image\/png(?:;|$)/i.test(response.headers.get("content-type") || "")) return null;
+      // Chrome can omit HTTP headers on this internal response; verify the PNG bytes.
+      const mime = response.headers.get("content-type");
+      if (!response.ok || (mime && !/^image\/png(?:;|$)/i.test(mime))) return null;
       const bytes = new Uint8Array(await response.arrayBuffer());
-      if (!bytes.length || bytes.length > 65536) return null;
+      const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+      if (bytes.length < signature.length || bytes.length > 65536 || signature.some((byte, index) => bytes[index] !== byte)) return null;
       return `data:image/png;base64,${btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""))}`;
     } catch { return null; }
   })();
   if (faviconCache.size >= 256) faviconCache.delete(faviconCache.keys().next().value);
   faviconCache.set(key, pending);
+  pending.then((source) => { if (!source && faviconCache.get(key) === pending) faviconCache.delete(key); });
   return pending;
 }
 const reopeningWindows = new Map();

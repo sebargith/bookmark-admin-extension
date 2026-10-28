@@ -46,3 +46,21 @@ test('manifest grants favicon lookup without making Chrome favicon history web-a
   assert.ok(manifest.permissions.includes('favicon'));
   assert.equal(manifest.web_accessible_resources.some(entry => entry.resources.some(resource => resource.includes('_favicon'))), false);
 });
+
+test('Chrome favicon responses without Content-Type are accepted by PNG signature', async () => {
+  const f = createFixture();
+  const png = fs.readFileSync(path.join(__dirname, '..', 'assets', 'app-icon', 'icon16.png'));
+  f.context.btoa = text => Buffer.from(text, 'binary').toString('base64');
+  f.context.fetch = async () => ({ ok: true, headers: { get: () => null }, arrayBuffer: async () => png });
+  assert.equal(await f.context.getBookmarkFavicon({ id: '200' }), `data:image/png;base64,${png.toString('base64')}`);
+});
+
+test('invalid PNG data is rejected and failed lookups can retry', async () => {
+  const f = createFixture(); let requests = 0;
+  const png = fs.readFileSync(path.join(__dirname, '..', 'assets', 'app-icon', 'icon16.png'));
+  f.context.btoa = text => Buffer.from(text, 'binary').toString('base64');
+  f.context.fetch = async () => ({ ok: true, headers: { get: () => null }, arrayBuffer: async () => ++requests === 1 ? new Uint8Array(100) : png });
+  assert.equal(await f.context.getBookmarkFavicon({ id: '200' }), null);
+  assert.ok((await f.context.getBookmarkFavicon({ id: '200' })).startsWith('data:image/png;base64,'));
+  assert.equal(requests, 2);
+});

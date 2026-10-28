@@ -586,3 +586,18 @@ Unit tests cover internal-origin lookup, credential removal, caching, unsupporte
 URLs, failed/oversized/non-PNG responses and absence of favicon web exposure.
 Actual installed-extension lookup still needs manual verification after reload;
 browser tests use synthetic icon responses and do not inspect personal history.
+
+## Favicon header fix - version 0.5.4
+
+Reproduced the reported missing icons using the actual unpacked extension loaded
+into installed Chrome through Extensions.loadUnpacked in an isolated profile.
+Chrome returned valid PNG data with no Content-Type header; 0.5.3 rejected it.
+The lookup now accepts absent headers when the bytes have a valid PNG signature,
+still rejects oversized/invalid data, and does not retain failed cache entries.
+
+Validation: 83 unit tests passed. The new native browser regression failed before
+the fix and passed afterward. Actual Chrome lookup and decoded favicon rendering
+were verified in both the extension manager page and injected closed shadow root.
+Screenshots were inspected. Evidence: favicon-header-fix outside the repository.
+Only a local test page, synthetic bookmark and new temporary Chrome profiles were
+used; no personal browser data was accessed. No new permissions were added.
