@@ -37,6 +37,8 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true, reducedMotion: "reduce" });
     await context.exposeBinding("__bookmarkRequest", async (source, type, payload) => {
+      if (type === 'getBookmarkFavicon') return { ok: true, result: ['200', '216'].includes(payload.id)
+        ? `data:image/png;base64,${fs.readFileSync(path.join(repo, 'assets/app-icon/icon16.png')).toString('base64')}` : null };
       if (type === "getCurrentTab") return { ok: true, result: { title: "Sample page", url: "https://example.test" } };
       const commands = { getManagerState: "getManagerState", saveManagerNavigation: "saveManagerNavigation", getState: "getManagedState", createFolder: "createFolder",
         renameNode: "renameNode", bulkMove: "bulkMove", bulkDelete: "bulkDelete", openBookmark: "openBookmark",
@@ -103,6 +105,10 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     assert.equal(await page.locator('.ba-folder-tree .ba-tree-bookmark').count(), 0);
     assert.equal(await page.locator('.ba-filter-panel').getAttribute('open'), null);
     assert.equal(await rows.first().getAttribute('data-bookmark-id'), '216');
+    await page.waitForFunction(() => document.querySelector('[data-favicon-id="216"]')?.src.startsWith('data:image/png;base64,'));
+    assert.equal(await page.locator('[data-favicon-id="216"]').evaluate(icon => icon.complete && icon.naturalWidth > 0), true);
+    assert.match(await page.locator('[data-favicon-id="210"]').getAttribute('src'), /bookmark-item\.svg$/);
+    assertions += 2;
     await page.screenshot({ path: path.join(artifacts, 'recently-saved-desktop.png'), animations: 'disabled' });
     await page.locator('.ba-folder-tree [data-folder-id="2"] .ba-name').click();
     assert.equal(await page.locator('.ba-domain-filter').isEnabled(), true);

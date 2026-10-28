@@ -33,6 +33,7 @@ Chrome will create a managed bookmark root named `Bookmark Admin`. Clicking the 
 - Navigate with clickable folder breadcrumbs, independent disclosure arrows, and expand/collapse-all controls. Empty folders have no active disclosure arrow.
 - Open the manager to Recently saved, newest first, across all Chrome folders. Folder locations remain remembered when switching views and expanded folders are stored locally. New popup saves always start in Other bookmarks.
 - Browse consistent compact bookmark rows with wider titles, narrow dates, and full titles/URLs on hover. Only link issues show a list indicator; notes, use counts, and generated keywords remain in the detail panel and search.
+- Show website favicons beside bookmark titles using Chrome's favicon service, with a generic bookmark fallback. Icons load as rows approach the visible list.
 - Select visible list bookmarks with compact checkboxes, Ctrl/Cmd-click, and Shift ranges. Batch Move, Rename and Delete controls appear only during selection.
 - Preview prefix/suffix/text-replacement renames, pick move destinations by full folder path, confirm deletions, and undo successful batch changes.
 - Right-click folders and bookmarks, or use their `...` buttons, for move, rename, notes, delete, check, sort, and re-index actions.
@@ -46,6 +47,7 @@ Chrome will create a managed bookmark root named `Bookmark Admin`. Clicking the 
 
 The extension asks for:
 
+- `favicon`: retrieve website icons through Chrome's extension-owned favicon service.
 - `bookmarks`: read and organize Chrome bookmarks.
 - `contextMenus`: add quick-save and open-manager menu items.
 - `scripting`: inject the movable full manager overlay into the active page.

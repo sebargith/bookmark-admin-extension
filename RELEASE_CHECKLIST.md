@@ -21,6 +21,7 @@ Before publishing changes:
   - create folder
   - open full manager overlay
   - expand folders
+  - verify website favicons in normal rows and expanded folders; verify unavailable icons fall back without changing row size
   - select a nested folder, switch views to verify folder-location memory, and reopen to verify Recently saved is the default
   - use breadcrumbs and expand/collapse controls without changing the selected location
   - rename, move, and remove the selected folder in Chrome and verify the manager refreshes safely

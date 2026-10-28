@@ -21,6 +21,34 @@ let navigationWriteQueue = Promise.resolve();
 let savedWindowWriteQueue = Promise.resolve();
 let bookmarkBatchQueue = Promise.resolve();
 let popupRecentQueue = Promise.resolve();
+const faviconCache = new Map();
+
+async function getBookmarkFavicon(payload = {}) {
+  const node = await getNode(payload.id);
+  if (!node?.url || !isHttpUrl(node.url)) return null;
+  let page;
+  try { page = new URL(node.url); } catch { return null; }
+  page.username = "";
+  page.password = "";
+  page.hash = "";
+  const key = page.href;
+  if (faviconCache.has(key)) return faviconCache.get(key);
+  const pending = (async () => {
+    try {
+      const iconUrl = new URL(chrome.runtime.getURL("_favicon/"));
+      iconUrl.searchParams.set("pageUrl", key);
+      iconUrl.searchParams.set("size", "32");
+      const response = await fetch(iconUrl.href, { credentials: "omit" });
+      if (!response.ok || !/^image\/png(?:;|$)/i.test(response.headers.get("content-type") || "")) return null;
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (!bytes.length || bytes.length > 65536) return null;
+      return `data:image/png;base64,${btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""))}`;
+    } catch { return null; }
+  })();
+  if (faviconCache.size >= 256) faviconCache.delete(faviconCache.keys().next().value);
+  faviconCache.set(key, pending);
+  return pending;
+}
 const reopeningWindows = new Map();
 
 function updateSavedWindowRecords(root, patches = {}) {
@@ -2183,6 +2211,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         break;
       case "getCurrentTab":
         result = await getCurrentTab();
+        break;
+      case "getBookmarkFavicon":
+        result = await getBookmarkFavicon(payload);
         break;
       case "quickSaveCurrentPage":
         result = await quickSaveCurrentPage(payload);

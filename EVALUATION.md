@@ -571,3 +571,18 @@ bookmark-admin-verification/redesign-step3 outside the repository. All bookmarks
 and Chrome profiles used in tests were synthetic. No permissions were added.
 Actual Chrome toolbar popup/menu hosting still requires manual verification
 after reloading the unpacked extension.
+
+## Website favicons - version 0.5.3
+
+Adds Chrome's favicon permission and an extension-background lookup returning
+bounded PNG data. The browser favicon endpoint is not web-accessible, and no
+third-party icon provider is used. Visible/nearby rows resolve icons lazily;
+temporary bounded caches avoid repeated lookup. Unavailable icons use the
+existing bookmark asset.
+
+Validation: 81 unit tests and 481 manager browser assertions passed. Synthetic
+PNG rendering and missing-icon fallback were verified in Chrome screenshots.
+Unit tests cover internal-origin lookup, credential removal, caching, unsupported
+URLs, failed/oversized/non-PNG responses and absence of favicon web exposure.
+Actual installed-extension lookup still needs manual verification after reload;
+browser tests use synthetic icon responses and do not inspect personal history.

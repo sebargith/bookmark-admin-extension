@@ -219,6 +219,37 @@
     menu: root.querySelector(".ba-menu")
   };
 
+  const faviconCache = new Map();
+  const faviconObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const icon = entry.target;
+      faviconObserver.unobserve(icon);
+      const bookmark = findFlatBookmark(icon.dataset.faviconId);
+      if (!bookmark) continue;
+      if (!faviconCache.has(bookmark.url)) {
+        if (faviconCache.size >= 256) faviconCache.delete(faviconCache.keys().next().value);
+        faviconCache.set(bookmark.url, send("getBookmarkFavicon", { id: bookmark.id }).catch(() => null));
+      }
+      faviconCache.get(bookmark.url).then((source) => {
+        if (icon.isConnected && typeof source === "string" && source.startsWith("data:image/png;base64,")) icon.src = source;
+      });
+    }
+  }, { root: els.bookmarkList, rootMargin: "160px" });
+
+  function renderBookmarkIcon(bookmark) {
+    const icon = document.createElement("img");
+    icon.className = "ba-node-icon";
+    icon.alt = "";
+    icon.width = 16;
+    icon.height = 16;
+    icon.src = ICONS.bookmark;
+    icon.dataset.faviconId = bookmark.id;
+    icon.addEventListener("error", () => { icon.src = ICONS.bookmark; }, { once: true });
+    if (/^https?:\/\//i.test(bookmark.url)) faviconObserver.observe(icon);
+    return icon;
+  }
+
   // Keep navigation beside folders and all results in one contents pane.
   els.treePanel.prepend(root.querySelector(".ba-navigation"));
   els.listPanel.prepend(root.querySelector(".ba-toolbar"));
@@ -789,10 +820,7 @@
       showBookmarkMenu(event, bookmark);
     });
 
-    const bookmarkIcon = document.createElement("img");
-    bookmarkIcon.className = "ba-node-icon";
-    bookmarkIcon.alt = "";
-    bookmarkIcon.src = ICONS.bookmark;
+    const bookmarkIcon = renderBookmarkIcon(node);
 
     const title = document.createElement("button");
     title.type = "button";
@@ -842,6 +870,7 @@
     els.listTitle.textContent = folder ? folderDisplayName(folder) : VIEW_LABELS[state.view];
     els.listCount.textContent = `${bookmarks.length} shown`;
     els.bookmarkList.textContent = "";
+    faviconObserver.disconnect();
     const showFolders = folder && !state.search && state.dateFilter === "all" && state.issueFilter === "all" && !state.domainFilter && !state.duplicatesOnly;
     const childFolders = showFolders ? (folder.children || []).filter((node) => !node.url) : [];
     for (const child of childFolders) els.bookmarkList.append(renderFolderNode(child, false, 0, true));
@@ -930,10 +959,7 @@
       event.dataTransfer.effectAllowed = "move";
     });
 
-    const bookmarkIcon = document.createElement("img");
-    bookmarkIcon.className = "ba-node-icon";
-    bookmarkIcon.alt = "";
-    bookmarkIcon.src = ICONS.bookmark;
+    const bookmarkIcon = renderBookmarkIcon(bookmark);
     const selection = document.createElement("span");
     selection.className = "ba-bookmark-select";
     const checkbox = document.createElement("input");
@@ -2090,6 +2116,7 @@
   }
 
   function disposeOverlay() {
+    faviconObserver.disconnect();
     window.removeEventListener("resize", clampOpenMenu);
     document.removeEventListener("keydown", onKeyDown, true);
     document.removeEventListener("focusin", containDrawerFocus, true);

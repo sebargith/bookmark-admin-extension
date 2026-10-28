@@ -18,6 +18,8 @@ Local Bookmark Admin is designed to keep bookmark data local to Chrome.
 
 ## Network Access
 
+- Website icons are requested from Chrome's extension-owned favicon endpoint by the background worker. Only bounded PNG image data is sent to the manager; no third-party favicon provider is used and the favicon endpoint is not made web-accessible. Icon caches are temporary memory only.
+
 - The extension fetches saved pages only to generate local search keywords.
 - Page indexing uses `credentials: "omit"`, so cookies and logged-in session credentials are not sent with indexing requests.
 - Link checking sends normal `HEAD` or small `GET` requests to the bookmark URLs being checked.
