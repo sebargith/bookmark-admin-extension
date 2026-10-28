@@ -3,6 +3,7 @@ const path = require("node:path");
 const { copy } = require("./chrome-fixture.cjs");
 
 module.exports = async function verifySearchFiltersUI({ page, fixture, artifacts }) {
+  await page.locator('.ba-filter-panel > summary').click();
   let checks = 0;
   const equal = (...args) => { assert.equal(...args); checks += 1; };
   const deepEqual = (...args) => { assert.deepEqual(...args); checks += 1; };
@@ -175,6 +176,7 @@ module.exports = async function verifySearchFiltersUI({ page, fixture, artifacts
   for (const key of Object.keys(fixture.storage)) delete fixture.storage[key];
   Object.assign(fixture.storage, originalStorage);
   await page.reload();
+  await page.getByRole('tab', { name: /^Library/ }).click();
   await page.waitForFunction(() => document.querySelectorAll(".ba-bookmark-list .ba-bookmark-row").length === 2);
   return checks;
 };

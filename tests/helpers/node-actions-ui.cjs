@@ -11,6 +11,7 @@ module.exports = async function verifyNodeActionsUI({ page, fixture, artifacts }
   fixture.find("100").children.push({ id: "action-twin", parentId: "100", title: "Research", index: 2, children: [] });
   fixture.find("100").children.push({ id: "action-source", parentId: "100", title: "Source", index: 3, children: [] });
   await page.reload();
+  await page.getByRole('tab', { name: /^Library/ }).click();
   await page.waitForFunction(() => document.querySelectorAll(".ba-bookmark-list .ba-bookmark-row").length === 2);
   const dialog = page.locator(".ba-action-dialog");
   const menu = page.locator(".ba-menu");
@@ -125,6 +126,7 @@ module.exports = async function verifyNodeActionsUI({ page, fixture, artifacts }
   Object.assign(fixture.storage, originalStorage);
   fixture.mutations.length = mutationCount;
   await page.reload();
+  await page.getByRole('tab', { name: /^Library/ }).click();
   await page.waitForFunction(() => document.querySelectorAll(".ba-bookmark-list .ba-bookmark-row").length === 2);
   return checks;
 };

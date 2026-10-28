@@ -12,6 +12,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
 
 (async () => {
   const fixture = createFixture();
+  fixture.find('216').dateAdded = Date.now();
   fixture.find("214").title = "";
   fixture.storage.metadataByUrl = {
     "https://example.test/200": {
@@ -97,7 +98,29 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
       assert.equal(await page.getByRole("tab", { name: new RegExp(`^${name}`) }).getAttribute("aria-selected"), "true");
       assertions += 1;
     };
+    await waitRows(10);
+    assert.equal(await page.locator('.ba-list-title').innerText(), 'Recently saved');
+    assert.equal(await page.locator('.ba-folder-tree .ba-tree-bookmark').count(), 0);
+    assert.equal(await page.locator('.ba-filter-panel').getAttribute('open'), null);
+    assert.equal(await rows.first().getAttribute('data-bookmark-id'), '216');
+    await page.screenshot({ path: path.join(artifacts, 'recently-saved-desktop.png'), animations: 'disabled' });
+    await page.locator('.ba-folder-tree [data-folder-id="2"] .ba-name').click();
+    assert.equal(await page.locator('.ba-domain-filter').isEnabled(), true);
+    await page.locator('.ba-bookmark-list [data-folder-id="130"] .ba-disclosure').click();
+    assert.equal(await page.locator('.ba-content-folder .ba-bookmark-row').count(), 1);
+    assert.equal(await page.locator('.ba-folder-tree .ba-tree-bookmark').count(), 0);
+    assert.equal(await page.locator('.ba-list-count').innerText(), '1 shown');
+    await page.locator('.ba-select-all').check();
+    assert.equal(await page.locator('.ba-content-folder .ba-select-bookmark:checked').count(), 1);
+    await page.locator('.ba-bookmark-list [data-folder-id="130"] > .ba-icon-btn').click();
+    await page.locator('.ba-menu').getByRole('button', { name: 'Expand / collapse', exact: true }).click();
+    assert.equal(await rows.count(), 0);
+    assert.equal(await page.locator('.ba-bookmark-list [data-folder-id="130"] .ba-disclosure').getAttribute('aria-expanded'), 'false');
+    await page.screenshot({ path: path.join(artifacts, 'folder-contents-desktop.png'), animations: 'disabled' });
+    await page.locator('.ba-overview').click();
+    await view('Library');
     await waitRows(2);
+    assertions += 11;
     assertions += await verifyAccessibilityUI({ page, fixture, artifacts });
     assertions += await verifyNodeActionsUI({ page, fixture, artifacts });
     assertions += await verifySearchFiltersUI({ page, fixture, artifacts });
@@ -111,9 +134,10 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await navigate(() => page.locator('[data-folder-id="102"] .ba-name').click());
     await waitRows(1);
     assert.equal(await page.locator('.ba-breadcrumbs [aria-current="location"]').innerText(), "Research");
-    await navigate(() => page.locator('[data-folder-id="101"] .ba-disclosure').click());
+    assert.equal(await page.locator('.ba-folder-tree [data-folder-id="101"] .ba-disclosure').isDisabled(), true);
+    await page.locator('.ba-folder-tree [data-folder-id="101"] .ba-name').focus();
     assert.equal(await page.locator(".ba-list-title").innerText(), "Research");
-    assert.equal(await page.locator('[data-folder-id="101"] .ba-disclosure').evaluate((node) => node === document.activeElement), true);
+    assert.equal(await page.locator('.ba-folder-tree [data-folder-id="101"] .ba-name').evaluate((node) => node === document.activeElement), true);
     await navigate(() => view("Saved Windows"));
     await navigate(() => page.locator('[data-folder-id="110"] .ba-name').click());
     const branch = { id: "nav-0", parentId: "111", title: "Archive", children: [] };
@@ -141,6 +165,9 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     assert.equal(await page.locator(".ba-layout").evaluate((node) => node.scrollWidth <= node.clientWidth + 1), true);
     await page.screenshot({ path: path.join(artifacts, "hierarchy-deep.png"), animations: "disabled" });
     await page.reload();
+    await waitRows(10);
+    assert.equal(await page.locator('.ba-list-title').innerText(), 'Recently saved');
+    await view('All Bookmarks');
     await page.waitForFunction(() => document.querySelector('.ba-breadcrumbs [aria-current="location"]')?.textContent.startsWith("Deep folder 8"));
     assert.equal(await page.getByRole("tab", { name: /^All Bookmarks/ }).getAttribute("aria-selected"), "true");
     assert.equal(await page.locator('[data-folder-id="nav-0"] .ba-disclosure').getAttribute("aria-expanded"), "true");
@@ -178,6 +205,8 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     assertions += 25;
     fixture.storage.managerNavigation = { view: "windows", selectedByView: { library: "200", windows: "130", all: "missing" }, expanded: ["200", "missing", "1"] };
     await page.reload();
+    await waitRows(10);
+    await view('Saved Windows');
     await waitRows(3);
     assert.equal(await page.locator(".ba-list-title").innerText(), "Saved Windows");
     assert.equal(await page.locator(".ba-overview").getAttribute("aria-pressed"), "true");
@@ -465,7 +494,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
     await waitRows(2);
     await page.locator(".ba-folder-tree .ba-name", { hasText: /^All$/ }).click();
     await waitRows(1);
-    assert.equal((await page.locator(".ba-tree-bookmark").first().boundingBox()).height, 32);
+    assert.equal(await page.locator('.ba-folder-tree .ba-tree-bookmark').count(), 0);
     await page.getByRole("button", { name: /^All in Library/ }).click();
     await waitRows(2);
     assertions += 11;

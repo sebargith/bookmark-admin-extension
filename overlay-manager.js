@@ -2,7 +2,7 @@
   const ROOT_ID = "bookmark-admin-overlay";
   const previousFocus = document.activeElement;
   const DEFAULT_FOLDER_TITLE = "All";
-  const VIEW_LABELS = { library: "Library", windows: "Saved Windows", all: "All Bookmarks" };
+  const VIEW_LABELS = { recent: "Recently saved", library: "Library", windows: "Saved Windows", all: "All Bookmarks" };
   const IS_STANDALONE = window.location.href.split(/[?#]/, 1)[0] === chrome.runtime.getURL("manager.html");
   const assetUrl = (path) => chrome.runtime.getURL(`assets/${path}`);
   const ICONS = {
@@ -23,8 +23,8 @@
   };
   const state = {
     data: null,
-    view: "library",
-    selectedByView: { library: null, windows: null, all: null },
+    view: "recent",
+    selectedByView: { recent: null, library: null, windows: null, all: null },
     selectedFolderId: null,
     expanded: new Set(),
     navigationLoaded: false,
@@ -88,6 +88,9 @@
         <button class="ba-icon-btn ba-close" type="button" aria-label="Close">x</button>
       </header>
       <nav class="ba-navigation" role="tablist" aria-label="Bookmark views">
+        <button class="ba-view-tab" id="ba-view-recent" role="tab" type="button" data-view="recent" aria-selected="true" aria-controls="ba-manager-content">
+          <img src="${ICONS.bookmark}" alt=""><span>Recently saved</span><span class="ba-nav-count"></span>
+        </button>
         <button class="ba-view-tab" id="ba-view-library" role="tab" type="button" data-view="library" aria-selected="true" aria-controls="ba-manager-content">
           <img src="${ICONS.folderSelected}" alt=""><span>Library</span><span class="ba-nav-count"></span>
         </button>
@@ -220,6 +223,16 @@
     menu: root.querySelector(".ba-menu")
   };
 
+  // Keep navigation beside folders and all results in one contents pane.
+  els.treePanel.prepend(root.querySelector(".ba-navigation"));
+  els.listPanel.prepend(root.querySelector(".ba-toolbar"));
+  const filterPanel = document.createElement("details");
+  filterPanel.className = "ba-filter-panel";
+  filterPanel.innerHTML = '<summary>Filters</summary><div class="ba-filter-options"></div>';
+  const filterOptions = filterPanel.lastElementChild;
+  filterOptions.append(els.dateFilter, els.issueFilter, els.domainFilter, root.querySelector(".ba-duplicates-control"));
+  const toolbar = root.querySelector(".ba-toolbar");
+  toolbar.insertBefore(filterPanel, els.check);
   bindEvents();
   load().then(() => els.search.focus({ preventScroll: true })).catch(showError);
 
@@ -373,8 +386,8 @@
     const oldPath = state.data ? folderTrail(state.selectedFolderId).map((node) => node.id).join("/") : null;
     state.data = data;
     if (!state.navigationLoaded) {
-      state.view = data.navigation.view;
-      state.selectedByView = { ...data.navigation.selectedByView };
+      state.view = "recent";
+      state.selectedByView = { ...data.navigation.selectedByView, recent: null };
       state.expanded = new Set(data.navigation.expanded);
       state.selectedFolderId = state.selectedByView[state.view];
       state.navigationLoaded = true;
@@ -469,6 +482,11 @@
     resetBookmarkSelection();
     state.selectedByView[state.view] = state.selectedFolderId;
     state.view = view;
+    if (view === "recent") {
+      state.selectedByView.recent = null;
+      state.sortMode = "newest";
+      els.sort.value = "newest";
+    }
     state.selectedFolderId = state.selectedByView[view];
     if (state.selectedFolderId && !folderInView(state.selectedFolderId)) state.selectedFolderId = null;
     state.detailBookmark = null;
@@ -528,7 +546,7 @@
   }
 
   function scopeBookmarks(view = state.view) {
-    if (view === "all") return state.data.bookmarks;
+    if (view === "all" || view === "recent") return state.data.bookmarks;
     const ids = new Set(scopeRoots(view).map((node) => node.id));
     return state.data.bookmarks.filter((bookmark) =>
       ids.has(bookmark.folderId) || bookmark.folderAncestors.some((id) => ids.has(id))
@@ -547,7 +565,8 @@
   }
 
   function navigationSnapshot() {
-    return { view: state.view, selectedByView: { ...state.selectedByView }, expanded: [...state.expanded] };
+    const { recent, ...selectedByView } = state.selectedByView;
+    return { view: state.view === "recent" ? "all" : state.view, selectedByView, expanded: [...state.expanded] };
   }
 
   function persistNavigation() {
@@ -574,6 +593,7 @@
   }
 
   function renderBreadcrumbs() {
+    els.breadcrumbs.hidden = !state.selectedFolderId;
     els.breadcrumbs.textContent = "";
     const scrollTrail = document.createElement("div");
     scrollTrail.className = "ba-breadcrumb-trail";
@@ -604,6 +624,7 @@
       else state.expanded.delete(node.id);
     });
     renderTree();
+    renderBookmarks();
     persistNavigation();
   }
 
@@ -614,15 +635,16 @@
   function renderNavigation() {
     root.dataset.view = state.view;
     const label = VIEW_LABELS[state.view];
-    els.current.textContent = label;
+    els.current.textContent = "";
     els.layout.setAttribute("aria-labelledby", `ba-view-${state.view}`);
-    els.treeTitle.textContent = label;
+    els.treeTitle.textContent = state.view === "windows" ? "Window folders" : "Chrome folders";
     els.tree.setAttribute("aria-label", `${label} folders`);
-    els.overviewLabel.textContent = state.view === "all" ? "All bookmarks" :
+    els.overviewLabel.textContent = state.view === "recent" ? "Recently saved" : state.view === "all" ? "All bookmarks" :
       (state.view === "windows" ? "All saved windows" : "All in Library");
     els.overviewCount.textContent = scopeBookmarks().length;
     els.overview.setAttribute("aria-pressed", String(!state.selectedFolderId));
-    els.search.placeholder = `Search ${label}`;
+    els.overview.hidden = state.view === "recent";
+    els.search.placeholder = "Search bookmarks";
     els.search.setAttribute("aria-label", `Search ${label}`);
     const parentId = newFolderParent();
     els.newFolder.disabled = !parentId || state.data.readOnlyNodeIds.includes(parentId);
@@ -652,7 +674,7 @@
     els.tree.textContent = "";
     const nodes = state.view === "library" ? (scopeRoots()[0]?.children || []) : scopeRoots();
     for (const node of nodes) {
-      els.tree.append(node.url ? renderTreeBookmark(node) : renderFolderNode(node));
+      if (!node.url) els.tree.append(renderFolderNode(node));
     }
     let expandable = false;
     let anyExpanded = false;
@@ -674,8 +696,9 @@
     if (focusedFolder) els.tree.querySelector(`[data-folder-id="${CSS.escape(focusedFolder)}"] ${focusedControl}`)?.focus({ preventScroll: true });
   }
 
-  function renderFolderNode(folder, isRoot = false, depth = 0) {
+  function renderFolderNode(folder, isRoot = false, depth = 0, inContents = false) {
     const item = document.createElement("li");
+    if (inContents) item.className = "ba-content-folder";
     const expanded = state.expanded.has(folder.id);
     const selected = state.selectedFolderId === folder.id;
 
@@ -694,14 +717,14 @@
     const disclosure = document.createElement("button");
     disclosure.type = "button";
     disclosure.className = "ba-disclosure";
-    const hasChildren = Boolean(folder.children?.length);
+    const hasChildren = Boolean(folder.children?.some((node) => inContents || !node.url));
     disclosure.disabled = !hasChildren;
     if (hasChildren) disclosure.setAttribute("aria-expanded", String(expanded));
     disclosure.setAttribute("aria-label", `${expanded ? "Collapse" : "Expand"} ${folder.title}`);
     disclosure.addEventListener("click", (event) => {
       event.stopPropagation();
       toggleFolder(folder.id);
-      els.tree.querySelector(`[data-folder-id="${CSS.escape(folder.id)}"] .ba-disclosure`)?.focus();
+      (inContents ? els.bookmarkList : els.tree).querySelector(`[data-folder-id="${CSS.escape(folder.id)}"] .ba-disclosure`)?.focus();
     });
 
     const folderIcon = document.createElement("img");
@@ -748,8 +771,10 @@
       children.className = "ba-tree-children";
       children.style.setProperty("--ba-indent", depth < 4 ? "12px" : "0px");
       for (const child of folder.children || []) {
-        if (child.url) children.append(renderTreeBookmark(child));
-        else children.append(renderFolderNode(child, false, depth + 1));
+        if (!child.url) children.append(renderFolderNode(child, false, depth + 1, inContents));
+      }
+      if (inContents) for (const bookmark of visibleBookmarks().filter((node) => node.folderId === folder.id)) {
+        children.append(renderBookmarkRow(bookmark));
       }
       item.append(children);
     }
@@ -798,6 +823,7 @@
     await flushNotes();
     resetBookmarkSelection();
     state.detailBookmark = null;
+    if (folderId && state.view === "recent") state.view = "all";
     state.selectedFolderId = folderId;
     state.selectedByView[state.view] = folderId;
     if (expand && folderId) revealFolder(folderId);
@@ -819,10 +845,13 @@
     els.listTitle.textContent = folder ? folderDisplayName(folder) : VIEW_LABELS[state.view];
     els.listCount.textContent = `${bookmarks.length} shown`;
     els.bookmarkList.textContent = "";
+    const showFolders = folder && !state.search && state.dateFilter === "all" && state.issueFilter === "all" && !state.domainFilter && !state.duplicatesOnly;
+    const childFolders = showFolders ? (folder.children || []).filter((node) => !node.url) : [];
+    for (const child of childFolders) els.bookmarkList.append(renderFolderNode(child, false, 0, true));
     els.check.disabled = !bookmarks.length;
     els.index.disabled = !bookmarks.length;
 
-    if (!bookmarks.length) {
+    if (!bookmarks.length && !childFolders.length) {
       const filtered = state.search || state.dateFilter !== "all" || state.issueFilter !== "all" || state.domainFilter || state.duplicatesOnly;
       const copy = filtered ? "No bookmarks match these filters." :
         (state.view === "windows" && !scopeRoots().length ? "No saved windows yet." : "No bookmarks here yet.");
@@ -833,6 +862,7 @@
     }
 
     for (const bookmark of bookmarks) {
+      if (showFolders && bookmark.folderId !== folder.id) continue;
       els.bookmarkList.append(renderBookmarkRow(bookmark));
     }
     if (["bookmark", "selection", "list-control"].includes(focusMemory?.kind)) restoreNavigationFocus(focusMemory);
@@ -1146,10 +1176,12 @@
       ? new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short" }).format(date) : "-";
   }
 
-  function currentScopeBookmarks() {
+  function currentScopeBookmarks(recursive = false) {
     if (!state.data) return [];
+    const filtering = state.search || state.dateFilter !== "all" || state.issueFilter !== "all" || state.domainFilter || state.duplicatesOnly;
     return scopeBookmarks().filter((bookmark) => !state.selectedFolderId ||
-      bookmark.folderId === state.selectedFolderId || bookmark.folderAncestors.includes(state.selectedFolderId));
+      bookmark.folderId === state.selectedFolderId || (bookmark.folderAncestors.includes(state.selectedFolderId) &&
+        (recursive || filtering || folderTrail(bookmark.folderId).slice(folderTrail(bookmark.folderId).findIndex((node) => node.id === state.selectedFolderId) + 1).every((node) => state.expanded.has(node.id)))));
   }
 
   function bookmarkHostname(bookmark) {
@@ -1158,7 +1190,7 @@
   }
 
   function renderFilterControls() {
-    const domains = [...new Set(currentScopeBookmarks().map(bookmarkHostname).filter(Boolean))].sort();
+    const domains = [...new Set(currentScopeBookmarks(true).map(bookmarkHostname).filter(Boolean))].sort();
     if (!domains.includes(state.domainFilter)) state.domainFilter = "";
     els.domainFilter.replaceChildren(new Option("All domains", ""), ...domains.map((domain) => new Option(domain, domain)));
     els.domainFilter.value = state.domainFilter;
@@ -1166,7 +1198,7 @@
     const trail = folderTrail(state.selectedFolderId).filter((folder) => folderInView(folder.id) &&
       !(state.view === "library" && folder.id === state.data.managedRoot.id));
     const location = [VIEW_LABELS[state.view], ...trail.map((folder) => folder.title || "Untitled")].join(" / ");
-    els.searchScope.textContent = `Search scope: ${location} (including subfolders)`;
+    els.searchScope.textContent = state.view === "recent" ? "All Chrome bookmarks" : `Search scope: ${location} (including subfolders)`;
     const focusedChip = (shadow || document).activeElement?.closest("[data-remove-filter]")?.dataset.removeFilter;
     els.activeFilters.textContent = "";
     const filters = [
@@ -1237,6 +1269,15 @@
       if (state.sortMode === "used") return ((b.metadata || {}).useCount || 0) - ((a.metadata || {}).useCount || 0);
       return (b.dateAdded || 0) - (a.dateAdded || 0);
     });
+    if (state.selectedFolderId && !state.search && state.dateFilter === "all" && state.issueFilter === "all" && !state.domainFilter && !state.duplicatesOnly) {
+      const ordered = [];
+      const visit = (folder) => {
+        for (const child of folder.children || []) if (!child.url && state.expanded.has(child.id)) visit(child);
+        ordered.push(...bookmarks.filter((bookmark) => bookmark.folderId === folder.id));
+      };
+      visit(folderById(state.selectedFolderId));
+      return ordered;
+    }
     return bookmarks;
   }
 
@@ -1659,6 +1700,7 @@
     if (state.expanded.has(id)) state.expanded.delete(id);
     else state.expanded.add(id);
     renderTree();
+    renderBookmarks();
     persistNavigation();
   }
 
@@ -1945,7 +1987,7 @@
   }
 
   async function exportBookmarks(format) {
-    const payload = { format, view: state.view, folderId: state.selectedFolderId };
+    const payload = { format, view: state.view === "recent" ? "all" : state.view, folderId: state.selectedFolderId };
     if (!IS_STANDALONE) {
       await send("openExportPage", payload);
       setStatus("Export opened in a separate tab.");
@@ -1969,7 +2011,7 @@
   }
 
   function beginDrag(event) {
-    if (event.button !== 0 || event.target.closest("button")) return;
+    if (event.button !== 0 || event.target.closest("button, input, select, summary")) return;
     const rect = els.win.getBoundingClientRect();
     state.dragging = {
       offsetX: event.clientX - rect.left,
@@ -2019,7 +2061,7 @@
     if (event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey &&
         (state.action || state.detailDrawer || els.menu.classList.contains("ba-hidden"))) {
       const surface = state.action ? els.actionLayer : state.detailDrawer ? els.detail : els.win;
-      const controls = [...surface.querySelectorAll("button, textarea, input, select, a[href], [tabindex]")]
+      const controls = [...surface.querySelectorAll("button, textarea, input, select, summary, a[href], [tabindex]")]
         .filter((node) => node.tabIndex >= 0 && !node.disabled && node.getClientRects().length);
       const index = controls.indexOf((shadow || document).activeElement);
       if (!controls.length || index < 0 || event.shiftKey && index === 0 || !event.shiftKey && index === controls.length - 1) {

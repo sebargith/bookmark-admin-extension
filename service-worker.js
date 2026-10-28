@@ -2005,7 +2005,7 @@ async function initializeExtension() {
   chrome.contextMenus.create({
     id: "openBookmarkAdmin",
     title: "Open bookmark manager",
-    contexts: ["all"]
+    contexts: ["all", "action"]
   });
 }
 
@@ -2070,9 +2070,7 @@ chrome.runtime.onStartup.addListener(() => {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   (async () => {
     if (info.menuItemId === "openBookmarkAdmin") {
-      if (tab && tab.id !== undefined) {
-        await openManagerSurface(tab.id);
-      }
+      await openManagerSurface(tab?.id);
       return;
     }
 

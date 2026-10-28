@@ -534,3 +534,19 @@ Revision fixed fragment-stripping duplicate matching and misleading save states.
 Native toolbar-popup hosting still requires manual verification after reload.
 Only synthetic bookmarks were used; no personal Chrome profile was accessed.
 
+## Redesign step 2 - version 0.5.1
+
+Independent evaluator after one revision: functionality 8/10, visuals 8/10,
+usability 8/10. Its 31 focused assertions passed without bookmark mutations.
+Revision fixed expanded-content selection/counts, menu collapse refresh, and
+descendant-only domain options. Expanded rows now share the normal bookmark
+controls and their selection ordering follows the rendered folder hierarchy.
+Recently saved is the initial view on each opening; view folder locations and
+expansion remain remembered. The action context menu includes Open bookmark
+manager, with standalone fallback when no usable tab exists.
+
+Parent verification passed 76 unit tests, 479 manager browser assertions, and
+the actual-worker popup browser regression. Desktop and narrow screenshots
+were inspected. Evidence is stored outside the repository under
+bookmark-admin-verification/redesign-step2. All profiles and data are synthetic.
+Native toolbar right-click integration still requires a manual check after reload.

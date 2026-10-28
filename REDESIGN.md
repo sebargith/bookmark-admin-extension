@@ -8,10 +8,13 @@ Three user-requested prompts, with one commit per step.
    Folder changes move the same native ID; stale parent changes are rejected.
    New folders are created inline beneath the current destination.
    Opening and moving do not fetch page contents or require keyword indexing.
-2. Pending: two-column manager with unified folder navigation, compact main
+2. Complete (0.5.1): two-column manager with unified folder navigation, compact main
    list, Recently saved as the default opening view, and toolbar-icon context
    menu entry to open the manager. Chrome owns the right-click gesture; its
    action context menu can provide Open manager, rather than intercepting it.
+   Sidebar folders contain no bookmark rows. Expanded main-pane folders use the
+   same bookmark rows, counts and selection model as other results. Domain filters
+   cover subfolders even before search. Advanced filters open on demand.
 3. Pending: remaining visual polish, searchable destination picker, advanced
    filters and contextual controls, matching the approved navy/violet previews.
 

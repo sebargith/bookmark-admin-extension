@@ -20,16 +20,16 @@ Chrome will create a managed bookmark root named `Bookmark Admin`. Clicking the 
 - See saved-window dates and current tab counts, reopen web pages as a window after confirmation, and keep recognized captures identifiable after renaming or moving them.
 - Move one captured bookmark or a capture's contents into a Library folder using a destination picker, preserving native IDs, notes, folder structure, and move undo.
 - Switch between Library, Saved Windows, and All Bookmarks without copying or moving bookmarks.
-- Open the movable full manager overlay from the compact popup, page context menu, or `Alt+Shift+M`.
+- Open the movable full manager overlay from the compact popup, the toolbar icon's right-click menu, page context menu, or `Alt+Shift+M`. Restricted pages use a manager tab instead.
 - Blur the page behind the manager overlay and close it by clicking outside or pressing `Esc`.
 - Create folders and move bookmarks or folders by drag and drop.
 - Search title, URL, folder path, saved notes, and automatically extracted page keywords.
 - Filter bookmarks by time added, link status, and usage; sort by newest, oldest, title, or use count.
 - Store generated keywords, notes, open counts, and dead-link status in extension local storage.
 - Detect duplicates before saving and update metadata instead of creating another copy.
-- Expand folders into deployable lists that show subfolders and bookmarks inline.
+- Browse folders in the sidebar and expand subfolders inline in the main contents list, with shared bookmark selection and counts.
 - Navigate with clickable folder breadcrumbs, independent disclosure arrows, and expand/collapse-all controls. Empty folders have no active disclosure arrow.
-- Resume the manager's last view and selected folder, with folder locations remembered per view and expanded folders stored locally. New popup saves always start in Other bookmarks.
+- Open the manager to Recently saved, newest first, across all Chrome folders. Folder locations remain remembered when switching views and expanded folders are stored locally. New popup saves always start in Other bookmarks.
 - Browse consistent compact bookmark rows with wider titles, narrow dates, and full titles/URLs on hover. Only link issues show a list indicator; notes, use counts, and generated keywords remain in the detail panel and search.
 - Select visible list bookmarks with compact checkboxes, Ctrl/Cmd-click, and Shift ranges. Batch Move, Rename and Delete controls appear only during selection.
 - Preview prefix/suffix/text-replacement renames, pick move destinations by full folder path, confirm deletions, and undo successful batch changes.

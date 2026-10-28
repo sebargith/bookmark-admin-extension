@@ -71,6 +71,7 @@ module.exports = async function verifyAccessibilityUI({ page, fixture, artifacts
     parent = child;
   }
   await page.reload();
+  await page.getByRole('tab', { name: /^All Bookmarks/ }).click();
   await page.locator('.ba-bookmark-list [data-bookmark-id="200"]').waitFor();
   await page.locator('.ba-bookmark-list [data-bookmark-id="200"] .ba-icon-btn').click();
   equal(await page.locator('.ba-bookmark-list [data-bookmark-id="200"] .ba-icon-btn').getAttribute("aria-expanded"), "true");
@@ -132,6 +133,7 @@ module.exports = async function verifyAccessibilityUI({ page, fixture, artifacts
   Object.assign(fixture.storage, originalStorage);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.reload();
+  await page.getByRole('tab', { name: /^Library/ }).click();
   await page.waitForFunction(() => document.querySelectorAll(".ba-bookmark-list .ba-bookmark-row").length === 2);
   return checks;
 };
