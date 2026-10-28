@@ -182,12 +182,28 @@ destination identity/label findings were resolved. All 68 unit tests and 416
 browser assertions pass with synthetic APIs, plus independent stale-destination
 probes. See [EVALUATION.md](EVALUATION.md) for evidence and integration limits.
 
-## 9. Visual refinement and accessibility (planned)
+## 9. Visual refinement and accessibility (complete)
 
 Refine dark surfaces, restrained accents, focus states, contrast, keyboard access,
 motion preferences, and layouts across window sizes. Give warning and dead-link
 indicators distinct shapes as well as colors.
 Keep dialog action controls easy to reach with very long paths in short windows.
+
+Implemented restrained charcoal/green surfaces, clearer form boundaries and focus
+rings, popup contrast/disabled/reduced-motion styles, distinct warning/broken-link
+shapes with accessible labels, scrolling dialog bodies with fixed action rows,
+bounded scrolling menus and resize re-clamping. Main manager/dialog/drawer keyboard
+focus is contained, menu triggers expose expanded state and closing the injected
+manager restores the original page focus when possible. Emulated forced-color
+focus and reduced-motion behavior are covered by synthetic browser checks.
+
+Independently accepted at 9.00/10 after one optional revision from 8.67/10. The
+resize-menu finding is resolved. Verification: 68 unit tests, 465 manager browser
+assertions and 10 popup browser tests pass. Native loaded-extension, screen-reader
+and hardware integration still need manual verification. See [EVALUATION.md](EVALUATION.md).
+
+All nine implementation steps are complete. The release checklist remains the
+guide for native Chrome integration and manual accessibility validation.
 
 ## Evaluation for this delivery
 

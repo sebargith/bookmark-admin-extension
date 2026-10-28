@@ -83,6 +83,10 @@ Filtering destination choices never substitutes another folder: the chosen ID is
 
 Phase-eight actions/recovery evaluation: 8.5/10 after one optional revision, with 68 passing unit tests and 416 passing browser assertions using synthetic data. Native loaded-extension integration remains unverified. See [EVALUATION.md](EVALUATION.md).
 
+The manager and quick-save popup use visible keyboard focus, readable dark surfaces and reduced-motion styles. Link warnings use a triangle/exclamation mark; broken links use a circle/cross, with accessible names and tooltips rather than color alone. Manager dialogs keep action buttons outside their scrolling content, so long destination paths do not hide Cancel or the primary action. Context menus stay inside the viewport and scroll when needed. Tab stays within the active manager/dialog/drawer; closing an injected manager restores the previously focused page control when it still exists. Screen-reader and assistive-hardware integration still require manual testing.
+
+Phase-nine visual/accessibility evaluation: 9.00/10 after one optional menu-resize revision. Verification passes 68 unit tests, 465 manager browser assertions and 10 popup browser tests with synthetic data. All nine implementation steps are complete; native loaded-extension and manual accessibility verification remain pending. See [EVALUATION.md](EVALUATION.md).
+
 Phase-one independent evaluation: 7.3/10 after one revision. See [EVALUATION.md](EVALUATION.md) for findings, verification, and remaining test limits.
 
 Phase-two compact-list evaluation: 8.3/10 on its first review, with 23 passing unit tests and 61 passing browser assertions using synthetic data.

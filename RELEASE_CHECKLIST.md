@@ -30,6 +30,12 @@ Before publishing changes:
   - preview/cancel/apply batch rename, move and delete, then verify native order and undo
   - open More with Enter, navigate actions with arrows, and verify Escape/Tab and failed-submit focus recovery
   - edit notes
+  - verify keyboard focus remains visible through main manager, menus, drawers and dialogs
+  - verify Tab/Shift+Tab containment and return to the original page control after closing the overlay
+  - distinguish warning/broken link symbols without relying on color
+  - verify long-path dialog buttons stay visible at 320x568 and after manager resizing
+  - open bookmark/Export menus, shrink the browser viewport, and verify bounds/focus/Escape return
+  - verify reduced-motion and forced-colors behavior, popup contrast and disabled control feedback
   - create/rename folders and bookmarks with in-manager dialogs; cancel with Escape and backdrop
   - search move destinations, distinguish equal folder names by path, and verify no-match states
   - verify current-parent/self/descendant/read-only destinations are excluded as appropriate

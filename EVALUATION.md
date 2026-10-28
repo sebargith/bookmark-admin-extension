@@ -441,3 +441,58 @@ uses real Chrome rendering with synthetic APIs, not a loaded extension. No
 personal profile, personal bookmark data or external-page access was used.
 Native API integration, MV3 lifecycle, screen readers, touch hardware and security
 certification remain unverified.
+
+## Phase 9: Visual refinement and accessibility
+
+Manager commit `d297bc6` refines charcoal/green surfaces, panel corners, field
+boundaries, placeholders and focus rings while keeping compact rows. Warning
+links use an exclamation triangle and broken links a circle/cross, retaining
+accessible names/tooltips. All action dialogs now separate scrolling content
+from their fixed action row. Menus are bounded by the viewport and can scroll.
+Tab/focus is contained within the active manager/dialog/drawer; injected-manager
+close restores the original page focus when possible. Menu triggers expose their
+expanded state. Reduced motion and forced-color focus styles are supported.
+
+Popup commit `a9e9c3b` adds explicit focus indicators, consistent disabled states,
+readable primary/secondary colors and reduced-motion styles, retaining the compact
+rounded layout and existing save behavior. Decorative radial backgrounds are
+removed. No permissions, network behavior or data-storage formats change.
+
+Regression commit `0c5801b` verifies main focus containment and host-focus return,
+distinct status shapes/names, computed contrast samples, reduced motion/forced
+colors, menu bounds and long-path dialogs at 390x844, 320x568 and 800x600.
+Main verification: 68 unit tests, 459 manager browser assertions and 10 standalone
+popup browser tests pass without page errors. Popup primary text measures at
+least 6.05:1 in the tested gradient/interaction samples. Artifacts are external to
+the repository in `phase-9-initial` and `phase-9-popup`. All data is synthetic.
+
+Initial independent scores: functionality 9/10, visuals 9/10, usability 8/10;
+arithmetic overall 8.67/10. The evaluator independently passed all 68 unit tests,
+459 manager assertions and 10 popup tests, inspected screenshots and exercised
+main/dialog/drawer focus, pointer dismissal, host-focus return, contrast samples,
+reduced motion and emulated forced colors. One P2 finding remained: open bookmark
+and Export menus could retain offscreen coordinates after viewport shrink.
+
+Optional revision 1 clamps open menu coordinates on viewport resize and removes
+its listener when the injected manager is disposed. Regressions open both menu
+types at 1440x1000, shrink to 320x568, verify bounds/focus/last-item visibility and
+Escape return to the trigger. All 68 unit tests and 465 manager assertions pass
+without page errors; popup code is unchanged from its 10 passing checks. Revision
+artifacts: `phase-9-revision-1`.
+
+Final independent scores: functionality 9/10, visuals 9/10, usability 9/10;
+arithmetic overall 9.00/10. Accepted after one optional revision (`5c08769`), with
+the original P2 resolved and no new actionable findings. The evaluator reran all
+465 manager assertions without page errors, checked bookmark/Export menus after
+shrink, additional resize cycles down to 320x240, exact focused-element retention,
+End-item visibility, Escape focus return and pointer dismissal. Screenshots were
+inspected and resize-listener disposal confirmed. Evidence:
+`phase-9-evaluator-revision-1`. Prior independent 68-unit and 10-popup results
+remain applicable; those two suites were not rerun during the final evaluation.
+
+All nine roadmap implementation steps are complete. Verification remains bounded:
+real Chrome rendering uses synthetic APIs in isolated temporary profiles, not a
+loaded extension with real native bookmark events. No personal profile/data or
+external-page access was used. Forced colors were browser-emulated. Actual
+screen-reader output, touch/assistive hardware, native installation/MV3 lifecycle
+and security certification remain unverified.
