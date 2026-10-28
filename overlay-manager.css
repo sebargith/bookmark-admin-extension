@@ -498,6 +498,7 @@
 
 .ba-folder-tree,
 .ba-bookmark-list {
+  contain: layout paint style;
   min-height: 0;
   margin: 0;
   padding: 10px;
@@ -784,6 +785,15 @@
   flex-direction: column;
   gap: 0;
   padding: 8px;
+}
+
+.ba-bookmark-chunk {
+  flex: 0 0 auto;
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--ba-chunk-height);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .ba-bookmark-row {
@@ -1300,6 +1310,15 @@
   .ba-folder-line:hover > .ba-icon-btn, .ba-folder-line:focus-within > .ba-icon-btn,
   .ba-icon-btn[aria-expanded="true"] { opacity: 1; }
 }
+
+/* List feedback stays immediate and avoids per-icon filter surfaces. */
+.ba-bookmark-select .ba-node-icon, .ba-tree-bookmark .ba-node-icon { filter: none; }
+.ba-bookmark-row:hover { background: #18263e; }
+.ba-bookmark-row.ba-row-selected:hover { background: #21473d; }
+.ba-folder-tree .ba-folder-line:hover { background: #1d2b44; }
+.ba-folder-tree .ba-folder-line.ba-selected:hover { background: #293557; }
+.ba-bookmark-row .ba-icon-btn, .ba-folder-line .ba-icon-btn { transition: none; box-shadow: none; }
+.ba-bookmark-row :focus-visible { outline-offset: 0 !important; }
 @container bookmark-manager (max-width: 1100px) {
   .ba-layout.ba-has-detail { grid-template-columns: 264px minmax(0, 1fr); }
   .ba-bookmark-meta { grid-template-columns: minmax(0, 1fr); gap: 0; }

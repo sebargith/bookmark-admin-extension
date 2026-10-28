@@ -74,6 +74,13 @@ ordinary folder tree uses single-line entries. The idle footer is hidden until
 there is a status message or an Undo action. The quick-save popup and existing
 blue/violet palette are unchanged.
 
+Version 0.5.6 improves large-library responsiveness. Bookmark rows are grouped
+into batches so Chrome can skip offscreen layout/painting without removing them
+from the document. Selection updates existing rows, keeping keyboard focus and
+loaded icons intact. Folder lookups/counts and date formatters are reused, and
+row hover feedback avoids animated shadows and per-icon filter effects.
+The opening animation no longer shifts the window past the viewport edge.
+
 Navigation counts represent bookmarks. Search and filters apply within the active view and selected folder, including its descendants. Export includes that view or folder, regardless of search filters. Changes made in Chrome update the open manager automatically. These views do not create extra copies or move existing bookmarks. See [ROADMAP.md](ROADMAP.md) for upcoming improvements.
 
 The search scope is displayed beside the results. Domain filtering matches the exact hostname, so a subdomain is a separate choice. Duplicate filtering uses normalized URLs within that scope before applying text, domain, date and status filters; it does not merge or delete bookmarks. Active filters can be removed individually or cleared together. Sorting is separate from filtering. Filters remain session-only and do not change Chrome's bookmark structure or request any network data.
@@ -135,6 +142,14 @@ The full manager overlay can run on normal `http` and `https` pages. Chrome does
 Notes use local extension storage. Closing the panel or manager through its controls waits for pending saves and keeps the editor open if saving fails. A page-exit handler makes a best-effort delivery of remaining drafts on native tab closure; browser crashes or forced shutdown cannot guarantee delivery.
 
 ## Development checks
+
+`node tests/manager-performance.browser.cjs` profiles an isolated Chrome window
+with 3,010 synthetic bookmarks. It reports opening, hover and selection timings,
+and checks row reuse, selection, search, stable scrolling and offscreen keyboard
+focus. Timing results are diagnostics rather than hardware-dependent pass/fail
+limits. Set `BOOKMARK_PERF_TRACE=1` to save a Chrome timeline alongside the results.
+Use `BOOKMARK_PERF_BASELINE=1` only when profiling an older implementation; this
+skips the new row-reuse and opening-bounds assertions for before/after comparison.
 
 `node tests/favicons-native.browser.cjs` loads the real unpacked extension through
 Chrome DevTools in a new temporary profile and serves a local test favicon. It

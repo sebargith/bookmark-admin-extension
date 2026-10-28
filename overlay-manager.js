@@ -2,6 +2,8 @@
   const ROOT_ID = "bookmark-admin-overlay";
   const previousFocus = document.activeElement;
   const DEFAULT_FOLDER_TITLE = "All";
+  const shortDateFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+  const fullDateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short" });
   const VIEW_LABELS = { recent: "Recently saved", library: "Library", windows: "Saved Windows", all: "All Bookmarks" };
   const IS_STANDALONE = window.location.href.split(/[?#]/, 1)[0] === chrome.runtime.getURL("manager.html");
   const assetUrl = (path) => chrome.runtime.getURL(`assets/${path}`);
@@ -24,6 +26,9 @@
   const state = {
     data: null,
     folderNames: new Map(),
+    index: null,
+    renderedBookmarks: [],
+    renderedRows: new Map(),
     view: "recent",
     selectedByView: { recent: null, library: null, windows: null, all: null },
     selectedFolderId: null,
@@ -230,17 +235,18 @@
   const faviconObserver = new IntersectionObserver((entries) => {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
-      const icon = entry.target;
-      faviconObserver.unobserve(icon);
-      const bookmark = findFlatBookmark(icon.dataset.faviconId);
-      if (!bookmark) continue;
-      if (!faviconCache.has(bookmark.url)) {
-        if (faviconCache.size >= 256) faviconCache.delete(faviconCache.keys().next().value);
-        faviconCache.set(bookmark.url, send("getBookmarkFavicon", { id: bookmark.id }).catch(() => null));
+      faviconObserver.unobserve(entry.target);
+      for (const icon of entry.target.querySelectorAll("img[data-favicon-id]")) {
+        const bookmark = findFlatBookmark(icon.dataset.faviconId);
+        if (!bookmark || !/^https?:\/\//i.test(bookmark.url)) continue;
+        if (!faviconCache.has(bookmark.url)) {
+          if (faviconCache.size >= 256) faviconCache.delete(faviconCache.keys().next().value);
+          faviconCache.set(bookmark.url, send("getBookmarkFavicon", { id: bookmark.id }).catch(() => null));
+        }
+        faviconCache.get(bookmark.url).then((source) => {
+          if (icon.isConnected && typeof source === "string" && source.startsWith("data:image/png;base64,")) icon.src = source;
+        });
       }
-      faviconCache.get(bookmark.url).then((source) => {
-        if (icon.isConnected && typeof source === "string" && source.startsWith("data:image/png;base64,")) icon.src = source;
-      });
     }
   }, { root: els.bookmarkList, rootMargin: "160px" });
 
@@ -253,7 +259,6 @@
     icon.src = ICONS.bookmark;
     icon.dataset.faviconId = bookmark.id;
     icon.addEventListener("error", () => { icon.src = ICONS.bookmark; }, { once: true });
-    if (/^https?:\/\//i.test(bookmark.url)) faviconObserver.observe(icon);
     return icon;
   }
 
@@ -432,6 +437,7 @@
     const navigationFocus = captureNavigationFocus();
     const oldPath = state.data ? folderTrail(state.selectedFolderId).map((node) => node.id).join("/") : null;
     state.data = data;
+    state.index = indexManagerData(data);
     state.folderNames = new Map(data.folders.map((folder) => [folder.id, folder.title]));
     if (!state.navigationLoaded) {
       state.view = "recent";
@@ -550,8 +556,25 @@
     return state.data.root.children || [];
   }
 
+  function indexManagerData(data) {
+    const index = {
+      folders: new Map(), bookmarks: new Map(data.bookmarks.map((bookmark) => [bookmark.id, bookmark])),
+      counts: new Map(), scopes: new Map(), captures: new Map(data.savedWindows.map((capture) => [capture.folderId, capture])),
+      readOnly: new Set(data.readOnlyNodeIds)
+    };
+    const visit = (folder) => {
+      index.folders.set(folder.id, folder);
+      let count = 0;
+      for (const child of folder.children || []) count += child.url ? 1 : visit(child);
+      index.counts.set(folder.id, count);
+      return count;
+    };
+    visit(data.root);
+    return index;
+  }
+
   function captureById(id) {
-    return state.data.savedWindows.find((capture) => capture.folderId === id);
+    return state.index.captures.get(id);
   }
 
   function captureForBookmark(bookmark) {
@@ -595,21 +618,21 @@
 
   function scopeBookmarks(view = state.view) {
     if (view === "all" || view === "recent") return state.data.bookmarks;
+    if (state.index.scopes.has(view)) return state.index.scopes.get(view);
     const ids = new Set(scopeRoots(view).map((node) => node.id));
-    return state.data.bookmarks.filter((bookmark) =>
+    const bookmarks = state.data.bookmarks.filter((bookmark) =>
       ids.has(bookmark.folderId) || bookmark.folderAncestors.some((id) => ids.has(id))
     );
+    state.index.scopes.set(view, bookmarks);
+    return bookmarks;
   }
 
   function folderInView(id, view = state.view) {
     const folder = folderById(id);
     if (!folder) return false;
-    if (view === "all") return id !== state.data.root.id;
-    return scopeRoots(view).some((node) => {
-      let found = false;
-      walk(node, (child) => { if (child.id === id && !child.url) found = true; });
-      return found;
-    });
+    if (view === "all" || view === "recent") return id !== state.data.root.id;
+    const roots = new Set(scopeRoots(view).map((node) => node.id));
+    return folderTrail(id).some((node) => roots.has(node.id));
   }
 
   function navigationSnapshot() {
@@ -744,7 +767,7 @@
     if (focusedFolder) els.tree.querySelector(`[data-folder-id="${CSS.escape(focusedFolder)}"] ${focusedControl}`)?.focus({ preventScroll: true });
   }
 
-  function renderFolderNode(folder, isRoot = false, depth = 0, inContents = false) {
+  function renderFolderNode(folder, isRoot = false, depth = 0, inContents = false, bookmarksByFolder = null) {
     const item = document.createElement("li");
     if (inContents) item.className = "ba-content-folder";
     const expanded = state.expanded.has(folder.id);
@@ -820,11 +843,9 @@
       children.className = "ba-tree-children";
       children.style.setProperty("--ba-indent", depth < 4 ? "12px" : "0px");
       for (const child of folder.children || []) {
-        if (!child.url) children.append(renderFolderNode(child, false, depth + 1, inContents));
+        if (!child.url) children.append(renderFolderNode(child, false, depth + 1, inContents, bookmarksByFolder));
       }
-      if (inContents) for (const bookmark of visibleBookmarks().filter((node) => node.folderId === folder.id)) {
-        children.append(renderBookmarkRow(bookmark));
-      }
+      if (inContents) appendBookmarkRows(children, bookmarksByFolder.get(folder.id) || []);
       item.append(children);
     }
 
@@ -861,6 +882,7 @@
 
     menu.setAttribute("aria-label", `Options for ${node.title || "bookmark"}`);
     item.append(bookmarkIcon, title, menu);
+    if (/^https?:\/\//i.test(node.url)) faviconObserver.observe(item);
     return item;
   }
 
@@ -884,6 +906,8 @@
     renderFilterControls();
     const folder = folderById(state.selectedFolderId);
     const bookmarks = visibleBookmarks();
+    state.renderedBookmarks = bookmarks;
+    state.renderedRows.clear();
     const visibleIds = new Set(bookmarks.map((bookmark) => bookmark.id));
     state.selectedBookmarks = new Set([...state.selectedBookmarks].filter((id) => visibleIds.has(id)));
     if (!visibleIds.has(state.selectionAnchor)) state.selectionAnchor = null;
@@ -892,9 +916,11 @@
     els.listCount.textContent = `${bookmarks.length} shown`;
     els.bookmarkList.textContent = "";
     faviconObserver.disconnect();
+    const contents = document.createDocumentFragment();
+    const bookmarksByFolder = groupBookmarksByFolder(bookmarks);
     const showFolders = folder && !state.search && state.dateFilter === "all" && state.issueFilter === "all" && !state.domainFilter && !state.duplicatesOnly;
     const childFolders = showFolders ? (folder.children || []).filter((node) => !node.url) : [];
-    for (const child of childFolders) els.bookmarkList.append(renderFolderNode(child, false, 0, true));
+    for (const child of childFolders) contents.append(renderFolderNode(child, false, 0, true, bookmarksByFolder));
 
     if (!bookmarks.length && !childFolders.length) {
       const filtered = state.search || state.dateFilter !== "all" || state.issueFilter !== "all" || state.domainFilter || state.duplicatesOnly;
@@ -906,10 +932,8 @@
       return;
     }
 
-    for (const bookmark of bookmarks) {
-      if (showFolders && bookmark.folderId !== folder.id) continue;
-      els.bookmarkList.append(renderBookmarkRow(bookmark));
-    }
+    appendBookmarkRows(contents, showFolders ? bookmarksByFolder.get(folder.id) || [] : bookmarks);
+    els.bookmarkList.append(contents);
     if (["bookmark", "selection", "list-control"].includes(focusMemory?.kind)) restoreNavigationFocus(focusMemory);
   }
 
@@ -918,18 +942,31 @@
     state.selectionAnchor = null;
   }
 
+  function appendBookmarkRows(container, bookmarks) {
+    // Keep every bookmark accessible while skipping layout/paint in offscreen batches.
+    for (let start = 0; start < bookmarks.length; start += 40) {
+      const chunk = document.createElement(container.localName === "ul" ? "li" : "div");
+      chunk.className = "ba-bookmark-chunk";
+      const batch = bookmarks.slice(start, start + 40);
+      chunk.style.setProperty("--ba-chunk-height", `${batch.length * 30}px`);
+      for (const bookmark of batch) chunk.append(renderBookmarkRow(bookmark));
+      container.append(chunk);
+      faviconObserver.observe(chunk);
+    }
+  }
+
   function clearBookmarkSelection(focus = false) {
     const id = state.selectionAnchor || [...state.selectedBookmarks][0];
     resetBookmarkSelection();
-    renderBookmarks();
+    updateBookmarkSelection();
     if (focus) (id && els.bookmarkList.querySelector(`[data-bookmark-id="${CSS.escape(id)}"] .ba-select-bookmark`) || els.selectAll).focus();
   }
 
   function selectAllVisible() {
-    const bookmarks = visibleBookmarks();
+    const bookmarks = state.renderedBookmarks;
     state.selectedBookmarks = new Set(bookmarks.map((bookmark) => bookmark.id));
     state.selectionAnchor ||= bookmarks[0]?.id || null;
-    renderBookmarks();
+    updateBookmarkSelection();
   }
 
   function selectBookmark(id, event = {}) {
@@ -945,12 +982,21 @@
       else state.selectedBookmarks.add(id);
       state.selectionAnchor = id;
     }
-    renderBookmarks();
+    updateBookmarkSelection();
+  }
+
+  function updateBookmarkSelection() {
+    for (const [id, { row, checkbox }] of state.renderedRows) {
+      const selected = state.selectedBookmarks.has(id);
+      if (row.classList.contains("ba-row-selected") !== selected) row.classList.toggle("ba-row-selected", selected);
+      if (checkbox.checked !== selected) checkbox.checked = selected;
+    }
+    renderSelectionBar(state.renderedBookmarks);
   }
 
   function renderSelectionBar(bookmarks) {
     const count = state.selectedBookmarks.size;
-    const readOnly = [...state.selectedBookmarks].filter((id) => state.data.readOnlyNodeIds.includes(id)).length;
+    const readOnly = [...state.selectedBookmarks].filter((id) => state.index.readOnly.has(id)).length;
     els.listPanel.classList.toggle("ba-selecting", count > 0);
     els.selectionBar.hidden = !count;
     els.selectAll.disabled = !bookmarks.length;
@@ -988,7 +1034,7 @@
     checkbox.className = "ba-select-bookmark";
     checkbox.checked = state.selectedBookmarks.has(bookmark.id);
     checkbox.setAttribute("aria-label", `Select ${bookmarkTitle(bookmark)}`);
-    checkbox.addEventListener("click", (event) => { event.preventDefault(); selectBookmark(bookmark.id, event); });
+    checkbox.addEventListener("click", (event) => selectBookmark(bookmark.id, event));
     checkbox.addEventListener("keydown", (event) => {
       if (event.key === " " && event.shiftKey) { event.preventDefault(); selectBookmark(bookmark.id, event); }
     });
@@ -1023,7 +1069,7 @@
     date.textContent = formatDate(bookmark.dateAdded);
     if (bookmark.dateAdded) {
       date.dateTime = new Date(bookmark.dateAdded).toISOString();
-      date.title = new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short" }).format(new Date(bookmark.dateAdded));
+      date.title = fullDateFormat.format(new Date(bookmark.dateAdded));
       date.setAttribute("aria-label", `Added ${date.title}`);
     }
 
@@ -1035,6 +1081,7 @@
 
     menu.setAttribute("aria-label", `Options for ${bookmarkTitle(bookmark)}`);
     row.append(selection, meta, renderLinkIndicator(bookmark), date, menu);
+    state.renderedRows.set(bookmark.id, { row, checkbox });
     return row;
   }
 
@@ -1216,7 +1263,7 @@
   function fullDate(value) {
     const date = new Date(value);
     return value && Number.isFinite(date.getTime())
-      ? new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short" }).format(date) : "-";
+      ? fullDateFormat.format(date) : "-";
   }
 
   function currentScopeBookmarks(recursive = false) {
@@ -1314,9 +1361,10 @@
     });
     if (state.selectedFolderId && !state.search && state.dateFilter === "all" && state.issueFilter === "all" && !state.domainFilter && !state.duplicatesOnly) {
       const ordered = [];
+      const byFolder = groupBookmarksByFolder(bookmarks);
       const visit = (folder) => {
         for (const child of folder.children || []) if (!child.url && state.expanded.has(child.id)) visit(child);
-        ordered.push(...bookmarks.filter((bookmark) => bookmark.folderId === folder.id));
+        ordered.push(...(byFolder.get(folder.id) || []));
       };
       visit(folderById(state.selectedFolderId));
       return ordered;
@@ -1352,7 +1400,16 @@
   }
 
   function visibleBookmarkIds() {
-    return visibleBookmarks().map((bookmark) => bookmark.id);
+    return state.renderedBookmarks.map((bookmark) => bookmark.id);
+  }
+
+  function groupBookmarksByFolder(bookmarks) {
+    const groups = new Map();
+    for (const bookmark of bookmarks) {
+      if (!groups.has(bookmark.folderId)) groups.set(bookmark.folderId, []);
+      groups.get(bookmark.folderId).push(bookmark);
+    }
+    return groups;
   }
 
   function searchableText(bookmark) {
@@ -2102,10 +2159,12 @@
 
   function clampWindow() {
     if (state.restoreBounds) return;
-    const rect = els.win.getBoundingClientRect();
-    els.win.style.left = `${Math.max(12, Math.min(rect.left, window.innerWidth - rect.width - 12))}px`;
-    els.win.style.top = `${Math.max(12, Math.min(rect.top, window.innerHeight - rect.height - 12))}px`;
-    els.win.style.right = "auto";
+    // Opening animations transform client bounds; clamp the underlying layout instead.
+    const left = Math.max(12, Math.min(els.win.offsetLeft, window.innerWidth - els.win.offsetWidth - 12));
+    const top = Math.max(12, Math.min(els.win.offsetTop, window.innerHeight - els.win.offsetHeight - 12));
+    if (els.win.style.left !== `${left}px`) els.win.style.left = `${left}px`;
+    if (els.win.style.top !== `${top}px`) els.win.style.top = `${top}px`;
+    if (els.win.style.right !== "auto") els.win.style.right = "auto";
   }
 
   function onViewportResize() {
@@ -2135,13 +2194,15 @@
     if (event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey &&
         (state.action || state.detailDrawer || els.menu.classList.contains("ba-hidden"))) {
       const surface = state.action ? els.actionLayer : state.detailDrawer ? els.detail : els.win;
-      const controls = [...surface.querySelectorAll("button, textarea, input, select, summary, a[href], [tabindex]")]
-        .filter((node) => node.tabIndex >= 0 && !node.disabled && node.getClientRects().length);
-      const index = controls.indexOf((shadow || document).activeElement);
-      if (!controls.length || index < 0 || event.shiftKey && index === 0 || !event.shiftKey && index === controls.length - 1) {
+      const controls = [...surface.querySelectorAll("button, textarea, input, select, summary, a[href], [tabindex]")];
+      const focusable = (node) => node.tabIndex >= 0 && !node.disabled && !node.closest("[inert]") && node.getClientRects().length;
+      // Only measure the boundaries; measuring every offscreen row defeats render skipping.
+      const first = controls.find(focusable);
+      const last = controls.findLast(focusable);
+      if (!first || !surface.contains(active) || event.shiftKey && active === first || !event.shiftKey && active === last) {
         event.preventDefault();
         event.stopPropagation();
-        (controls[event.shiftKey ? controls.length - 1 : 0] || surface.querySelector("form"))?.focus();
+        ((event.shiftKey ? last : first) || surface.querySelector("form"))?.focus();
       }
       return;
     }
@@ -2184,11 +2245,7 @@
   }
 
   function countBookmarks(folder) {
-    let count = 0;
-    walk(folder, (node) => {
-      if (node.url) count += 1;
-    });
-    return String(count);
+    return String(state.index.counts.get(folder.id) || 0);
   }
 
   function walk(node, visitor) {
@@ -2197,12 +2254,7 @@
   }
 
   function folderById(id) {
-    if (state.data.root.id === id) return state.data.root;
-    let match = null;
-    walk(state.data.root, (node) => {
-      if (!node.url && node.id === id) match = node;
-    });
-    return match;
+    return state.index?.folders.get(id) || null;
   }
 
   function folderDisplayName(folder, isRoot = false) {
@@ -2212,12 +2264,12 @@
   }
 
   function findFlatBookmark(id) {
-    return state.data.bookmarks.find((bookmark) => bookmark.id === id);
+    return state.index?.bookmarks.get(id);
   }
 
   function formatDate(ms) {
     if (!ms) return "";
-    return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(ms));
+    return shortDateFormat.format(new Date(ms));
   }
 
   function pill(text, type = "") {

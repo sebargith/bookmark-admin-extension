@@ -624,3 +624,43 @@ layouts. Screenshots were inspected. The loaded-extension favicon regression
 also passed in the manager page and closed-shadow overlay. All browser data is
 synthetic; evidence is outside the repository in compact-manager. No independent
 evaluator was used for this change.
+
+## Large-library performance - version 0.5.6
+
+Reproduced hover and selection lag with 3,010 synthetic bookmarks in isolated
+Chrome. The original manager rebuilt all rows on each selection and rendered
+per-icon shadows. Tracing also identified layout/intersection overhead when
+observing thousands of individual offscreen items.
+
+Rows now render in batches of up to 40 using content-visibility, with favicon
+observation at the batch boundary. All bookmarks remain in the document for
+keyboard focus and accessibility. Selection updates existing checkboxes/classes
+without recreating rows or icons. Folder/bookmark lookup maps, folder counts,
+view scopes, date formatters and grouped folder contents avoid repeated scans,
+formatting setup and repeated sorting during expanded-folder rendering. Keyboard
+focus trapping only measures its boundary controls, preserving offscreen skipping.
+The non-reduced-motion check also exposed opening-animation transforms affecting
+window clamping; bounds now use layout coordinates so the bottom edge stays visible.
+
+Local before/after measurements (single isolated runs, same 3,010-item fixture):
+
+| Measurement | 0.5.5 | 0.5.6 |
+| --- | ---: | ---: |
+| Open manager | 4,178 ms | 1,080 ms |
+| Hover frame interval, 95th percentile | 160 ms | 10.1 ms |
+| Main-thread work during 100 pointer moves | 11,991 ms | 412 ms |
+| Selection synchronous work | 810 ms | 2.6 ms |
+| Selection through subsequent frame | 1,433 ms | 11.9 ms |
+| List child mutations on selection | 3,011 | 0 |
+
+Timings depend on machine/browser load and are not universal guarantees. The
+performance regression asserts row identity, zero list replacements on selection,
+no redundant favicon reloads, bulk-selection limits, search, stable scroll height,
+nonblank rows throughout the list and focus on an offscreen last bookmark.
+
+Validation passed 83 unit tests, 490 manager browser assertions, the large-library
+regression and real loaded-extension favicon checks in both manager surfaces.
+Desktop screenshots were inspected. Evidence is stored outside the repository in
+manager-performance. No personal Chrome profile, bookmark contents or screenshots
+were used. The layout, popup, permissions and bookmark-storage behavior are
+unchanged. No independent evaluator was used for this change.
