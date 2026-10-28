@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Local Bookmark Admin",
   "description": "A local popup bookmark manager backed by Chrome bookmarks.",
-  "version": "0.4.10",
+  "version": "0.5.0",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "assets/app-icon/icon16.png",
@@ -25,7 +25,7 @@
     "service_worker": "service-worker.js"
   },
   "action": {
-    "default_title": "Save page to Bookmark Admin",
+    "default_title": "Save bookmark and choose folder",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "assets/app-icon/icon16.png",

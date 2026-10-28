@@ -1,5 +1,7 @@
 # Bookmark Admin Roadmap
 
+The subsequent three-commit redesign is tracked in [REDESIGN.md](REDESIGN.md).
+
 The extension uses Chrome's native bookmarks as its source of truth. Views must
 not duplicate or relocate bookmarks simply to organize the interface.
 

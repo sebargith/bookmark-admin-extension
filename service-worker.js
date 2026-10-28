@@ -909,6 +909,44 @@ async function getCurrentTab() {
   };
 }
 
+let popupSaveQueue = Promise.resolve();
+
+function beginPopupSave() {
+  const pending = popupSaveQueue.catch(() => {}).then(async () => {
+    const tab = await getCurrentTab();
+    if (!isHttpUrl(tab.url)) return { tab, bookmark: null };
+    const context = await getBookmarkContext();
+    const existing = [];
+    walk(context.root, (node) => { if (node.url === tab.url) existing.push(node); });
+    const editable = existing.find((node) => canModifyNode(node, context));
+    if (existing.length) return { tab, bookmark: editable || existing[0], readOnly: !editable, existing: true };
+    const roots = context.root.children || [];
+    const other = roots.find((node) => node.folderType === "other" && !isReadOnlyNode(node, context.nodeMap)) ||
+      roots.find((node) => node.id === "2" && !node.folderType && !isReadOnlyNode(node, context.nodeMap)) ||
+      roots.find((node) => /^(other bookmarks|otros marcadores)$/i.test(node.title) && !isReadOnlyNode(node, context.nodeMap));
+    if (!other) throw new Error("Chrome's Other bookmarks folder is unavailable or read-only.");
+    const bookmark = await withInternalMutation(() => chromeCall(chrome.bookmarks.create.bind(chrome.bookmarks), {
+      parentId: other.id, title: safeTitle(tab.title) || tab.url, url: tab.url
+    }));
+    return { tab, bookmark, existing: false };
+  });
+  popupSaveQueue = pending;
+  return pending;
+}
+
+async function movePopupBookmark(payload = {}) {
+  const context = await getBookmarkContext();
+  const node = context.nodeMap.get(payload.id);
+  if (!node?.url || node.url !== payload.url || !canModifyNode(node, context)) {
+    throw new Error("This bookmark has changed or is read-only. Reopen the popup.");
+  }
+  if (node.parentId !== payload.expectedParentId) throw new Error("This bookmark was moved in Chrome. Reopen the popup.");
+  const target = writableFolder(payload.folderId, context);
+  if (target.id === node.parentId) return { bookmark: node };
+  const bookmark = await withInternalMutation(() => chromeCall(chrome.bookmarks.move.bind(chrome.bookmarks), node.id, { parentId: target.id }));
+  return { bookmark };
+}
+
 async function quickSaveCurrentPage(payload = {}) {
   const tab = await getCurrentTab();
   if (!isHttpUrl(payload.url || tab.url)) {
@@ -2131,6 +2169,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         break;
       case "quickSaveCurrentPage":
         result = await quickSaveCurrentPage(payload);
+        break;
+      case "beginPopupSave":
+        result = await beginPopupSave();
+        break;
+      case "movePopupBookmark":
+        result = await movePopupBookmark(payload);
         break;
       case "saveAllWindows":
         result = await saveAllWindows();

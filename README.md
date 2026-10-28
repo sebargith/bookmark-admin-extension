@@ -10,12 +10,12 @@ A personal Chrome Manifest V3 extension for managing Chrome bookmarks from a com
 4. Click `Load unpacked`.
 5. Select the extension source folder.
 
-Chrome will create a managed bookmark root named `Bookmark Admin`. Clicking the pinned extension icon opens a compact save popup under the toolbar icon. Choose a folder, save, create a folder, or open the movable full manager overlay.
+Chrome will create a managed bookmark root named `Bookmark Admin`. Clicking the pinned extension icon immediately saves a new web page in Chrome's Other bookmarks folder and opens a compact editor. Changing the folder moves that same bookmark automatically. An existing bookmark is reused in its current location. Closing the popup leaves the bookmark saved.
 
 ## Main features
 
 - Save the current page from the compact toolbar popup, page context menu, or `Alt+Shift+B`.
-- Choose the target folder before saving, with a compact `New` folder action.
+- Change the saved bookmark's destination across writable Chrome folders, or create a subfolder inline and move it there.
 - Save all open Chrome windows into separate numbered folders on the bookmarks bar with `Save all windows`.
 - See saved-window dates and current tab counts, reopen web pages as a window after confirmation, and keep recognized captures identifiable after renaming or moving them.
 - Move one captured bookmark or a capture's contents into a Library folder using a destination picker, preserving native IDs, notes, folder structure, and move undo.
@@ -29,7 +29,7 @@ Chrome will create a managed bookmark root named `Bookmark Admin`. Clicking the 
 - Detect duplicates before saving and update metadata instead of creating another copy.
 - Expand folders into deployable lists that show subfolders and bookmarks inline.
 - Navigate with clickable folder breadcrumbs, independent disclosure arrows, and expand/collapse-all controls. Empty folders have no active disclosure arrow.
-- Resume the manager's last view and selected folder, with folder locations remembered per view and expanded folders stored locally. This does not change the popup's last save destination.
+- Resume the manager's last view and selected folder, with folder locations remembered per view and expanded folders stored locally. New popup saves always start in Other bookmarks.
 - Browse consistent compact bookmark rows with wider titles, narrow dates, and full titles/URLs on hover. Only link issues show a list indicator; notes, use counts, and generated keywords remain in the detail panel and search.
 - Select visible list bookmarks with compact checkboxes, Ctrl/Cmd-click, and Shift ranges. Batch Move, Rename and Delete controls appear only during selection.
 - Preview prefix/suffix/text-replacement renames, pick move destinations by full folder path, confirm deletions, and undo successful batch changes.

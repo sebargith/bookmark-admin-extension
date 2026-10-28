@@ -518,3 +518,19 @@ were not independently rerun for this fix. Evidence: `popup-width-fix`,
 workspace. Only synthetic data/temporary Chrome profiles were used. Permissions,
 runtime logic and storage formats are unchanged; native loaded-extension sizing
 and assistive-hardware integration remain unverified.
+# Redesign step 1 - version 0.5.0
+
+Independent evaluator: functionality 9/10, visuals 8/10, usability 8.5/10;
+overall 8.5/10 after one revision. No blocking findings remained. Long native
+folder-picker paths still truncate; the searchable picker is planned in step 3.
+
+Verified: 74 unit tests, an isolated real-Chrome popup test exercising the actual
+worker with synthetic Chrome APIs, and 465 manager browser assertions passed.
+The popup test covers automatic save, same-ID folder moves, reopening without a
+duplicate, inline folder creation, keyboard focus, loaded assets, narrow bootstrap
+width, reduced motion and unsupported pages. Unit tests also cover concurrent
+openings, read-only destinations, external move conflicts and distinct URL hashes.
+Revision fixed fragment-stripping duplicate matching and misleading save states.
+Native toolbar-popup hosting still requires manual verification after reload.
+Only synthetic bookmarks were used; no personal Chrome profile was accessed.
+

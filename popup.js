@@ -1,6 +1,8 @@
 const els = {};
 let appState = null;
 let currentTab = null;
+let savedBookmark = null;
+let moving = false;
 
 document.addEventListener("DOMContentLoaded", init);
 
@@ -14,8 +16,10 @@ function cacheElements() {
   for (const id of [
     "currentPageMini",
     "saveFolder",
-    "saveToFolder",
-    "saveToAll",
+    "saveFeedback",
+    "folderForm",
+    "folderName",
+    "cancelFolder",
     "createFolderMini",
     "saveAllWindows",
     "windowSaveStatus",
@@ -26,9 +30,10 @@ function cacheElements() {
 }
 
 function bindEvents() {
-  els.saveToFolder.addEventListener("click", () => saveCurrentPage(els.saveFolder.value));
-  els.saveToAll.addEventListener("click", () => saveCurrentPage(appState.defaultFolder.id));
-  els.createFolderMini.addEventListener("click", () => createFolder().catch(showError));
+  els.saveFolder.addEventListener("change", () => moveSavedBookmark().catch(showError));
+  els.createFolderMini.addEventListener("click", () => { els.folderForm.hidden = false; els.folderName.focus(); });
+  els.cancelFolder.addEventListener("click", () => { els.folderForm.hidden = true; });
+  els.folderForm.addEventListener("submit", (event) => { event.preventDefault(); createFolder().catch(showError); });
   els.saveAllWindows.addEventListener("click", saveWindowTabs);
   els.openManager.addEventListener("click", () => openManagerOverlay().catch(showError));
 }
@@ -51,63 +56,71 @@ function send(type, payload = {}) {
 }
 
 async function refresh() {
-  appState = await send("getState");
-  currentTab = await send("getCurrentTab");
+  const result = await send("beginPopupSave");
+  currentTab = result.tab;
+  savedBookmark = result.bookmark;
+  els.currentPageMini.textContent = currentTab.title || currentTab.url;
+  els.saveFeedback.textContent = savedBookmark ? (result.existing ? "Already bookmarked" : "Bookmark saved") : "";
+  appState = await send("getManagerState");
   els.currentPageMini.textContent = currentTab.title || currentTab.url;
   els.currentPageMini.title = currentTab.url;
   renderFolders();
   updateSaveAvailability();
+  if (savedBookmark) {
+    els.saveFeedback.textContent = result.existing ? "Already bookmarked" : "Bookmark saved";
+    els.saveFolder.disabled = Boolean(result.readOnly);
+    els.createFolderMini.disabled = Boolean(result.readOnly);
+  }
 }
 
 function renderFolders() {
-  const selected = appState.settings.lastSavedFolderId ||
-    appState.settings.selectedFolderId ||
-    appState.defaultFolder.id;
+  const selected = savedBookmark?.parentId;
   els.saveFolder.textContent = "";
   for (const folder of appState.folders) {
+    if (folder.id === appState.root.id || (appState.readOnlyNodeIds.includes(folder.id) && folder.id !== selected)) continue;
     const option = document.createElement("option");
     option.value = folder.id;
     option.textContent = `${"  ".repeat(Math.max(0, folder.depth - 1))}${folder.path || folder.title}`;
     els.saveFolder.append(option);
   }
   const hasSelectedFolder = Array.from(els.saveFolder.options).some((option) => option.value === selected);
-  els.saveFolder.value = hasSelectedFolder ? selected : appState.defaultFolder.id;
+  els.saveFolder.value = hasSelectedFolder ? selected : "";
 }
 
-async function saveCurrentPage(folderId) {
-  if (!isSaveableUrl(currentTab && currentTab.url)) {
-    showError(new Error("This page cannot be saved. Open a normal http or https page."));
-    return;
-  }
-
-  const buttonText = els.saveToFolder.textContent;
-  els.saveToFolder.textContent = "Saving";
-  els.saveToFolder.disabled = true;
-
+async function moveSavedBookmark() {
+  if (!savedBookmark || moving) return;
+  moving = true;
+  els.saveFolder.disabled = true;
+  els.createFolderMini.disabled = true;
   try {
-    await send("quickSaveCurrentPage", { folderId });
-    els.saveToFolder.textContent = "Saved";
-    setTimeout(() => window.close(), 420);
+    const result = await send("movePopupBookmark", { id: savedBookmark.id, url: savedBookmark.url,
+      expectedParentId: savedBookmark.parentId, folderId: els.saveFolder.value });
+    savedBookmark = result.bookmark;
+    els.saveFeedback.textContent = "Bookmark moved";
   } catch (error) {
-    els.saveToFolder.textContent = "Error";
-    showError(error);
-    setTimeout(() => {
-      els.saveToFolder.textContent = buttonText;
-      els.saveToFolder.disabled = false;
-    }, 900);
+    els.saveFolder.value = savedBookmark.parentId;
+    throw error;
+  } finally {
+    moving = false;
+    els.saveFolder.disabled = false;
+    els.createFolderMini.disabled = false;
   }
 }
 
 async function createFolder() {
-  const title = prompt("New folder name", "");
-  if (title === null || !title.trim()) return;
+  const title = els.folderName.value.trim();
+  if (!title || moving || !savedBookmark) return;
 
   const result = await send("createFolder", {
     title: title.trim(),
-    parentId: appState.managedRoot.id
+    parentId: savedBookmark.parentId
   });
-  await refresh();
+  appState = await send("getManagerState");
+  renderFolders();
   els.saveFolder.value = result.folder.id;
+  await moveSavedBookmark();
+  els.folderForm.hidden = true;
+  els.folderName.value = "";
 }
 
 async function saveWindowTabs() {
@@ -158,8 +171,7 @@ async function openManagerOverlay() {
 }
 
 function showError(error) {
-  console.error(error);
-  els.currentPageMini.textContent = error.message || String(error);
+  els.saveFeedback.textContent = `${savedBookmark ? "Bookmark remains saved. " : ""}${error.message || String(error)}`;
 }
 
 function isSaveableUrl(url) {
@@ -168,10 +180,11 @@ function isSaveableUrl(url) {
 
 function updateSaveAvailability() {
   const canSave = isSaveableUrl(currentTab && currentTab.url);
-  els.saveToFolder.disabled = !canSave;
-  els.saveToAll.disabled = !canSave;
+  els.saveFolder.disabled = !canSave || !savedBookmark;
+  els.createFolderMini.disabled = !canSave || !savedBookmark;
 
   if (!canSave) {
+    els.saveFeedback.textContent = "";
     els.currentPageMini.textContent = "This Chrome page cannot be saved.";
     els.currentPageMini.title = currentTab && currentTab.url ? currentTab.url : "";
   }

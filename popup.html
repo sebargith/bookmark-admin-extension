@@ -13,30 +13,27 @@
           <img src="assets/app-icon/icon32.png" alt="">
         </div>
         <div class="title-block">
-          <h1>Save Bookmark</h1>
+          <h1>Bookmark Admin</h1>
           <p id="currentPageMini" class="compact">Loading current tab...</p>
         </div>
       </header>
 
       <label class="field">
-        <span>Save into</span>
-        <select id="saveFolder"></select>
+        <span>Saved in</span>
+        <select id="saveFolder" disabled></select>
       </label>
 
       <div class="mini-actions">
-        <button id="saveToFolder" class="primary" type="button">
-          <img src="assets/icons/quick-save.svg" alt="">
-          <span>Save</span>
-        </button>
-        <button id="saveToAll" type="button">
-          <img src="assets/icons/folder-selected.svg" alt="">
-          <span>All</span>
-        </button>
-        <button id="createFolderMini" type="button">
+        <button id="createFolderMini" type="button" disabled>
           <img src="assets/icons/folder-open.svg" alt="">
-          <span>New</span>
+          <span>New folder</span>
         </button>
       </div>
+      <form id="folderForm" hidden>
+        <label class="field">Folder name<input id="folderName" maxlength="200" required></label>
+        <div class="folder-form-actions"><button class="primary" type="submit">Create and move</button><button id="cancelFolder" type="button">Cancel</button></div>
+      </form>
+      <p id="saveFeedback" class="compact" role="status" aria-live="polite">Saving bookmark...</p>
 
       <button id="saveAllWindows" class="windows-button" type="button">
         <img src="assets/icons/backup-export.svg" alt="">

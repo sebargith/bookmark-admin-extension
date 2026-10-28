@@ -184,9 +184,16 @@ h1 {
 
 .mini-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
+
+[hidden] { display: none !important; }
+#saveFeedback { white-space: normal; overflow-wrap: anywhere; color: #8ee0cf; }
+#folderForm { display: grid; gap: 10px; }
+#folderName { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; }
+#folderName:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.folder-form-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .manager-button {
   border-color: #38628a;
