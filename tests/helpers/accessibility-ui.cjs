@@ -107,6 +107,26 @@ module.exports = async function verifyAccessibilityUI({ page, fixture, artifacts
   equal(await page.evaluate(() => document.activeElement.textContent), "Delete");
   await page.keyboard.press("Escape");
   equal(await page.locator('.ba-bookmark-list [data-bookmark-id="200"] .ba-icon-btn').getAttribute("aria-expanded"), "false");
+  for (const type of ["bookmark", "export"]) {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const trigger = type === "bookmark" ? page.locator('.ba-bookmark-list [data-bookmark-id="200"] .ba-icon-btn') : page.locator(".ba-export");
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.waitForFunction(() => {
+      const rect = document.querySelector(".ba-menu").getBoundingClientRect();
+      return rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight;
+    });
+    equal(await page.locator(".ba-menu").evaluate((node) => node.contains(document.activeElement)), true);
+    await page.keyboard.press("End");
+    equal(await page.evaluate(() => {
+      const rect = document.activeElement.getBoundingClientRect();
+      return rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight;
+    }), true);
+    await page.screenshot({ path: path.join(artifacts, `menu-after-resize-${type}.png`), animations: "disabled" });
+    await page.keyboard.press("Escape");
+    equal(await trigger.evaluate((node) => node === document.activeElement), true);
+  }
   fixture.root.children = originalRoot.children;
   for (const key of Object.keys(fixture.storage)) delete fixture.storage[key];
   Object.assign(fixture.storage, originalStorage);

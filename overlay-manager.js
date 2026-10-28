@@ -224,6 +224,7 @@
   load().then(() => els.search.focus({ preventScroll: true })).catch(showError);
 
   function bindEvents() {
+    window.addEventListener("resize", clampOpenMenu);
     els.newFolder.disabled = true;
     els.check.disabled = true;
     els.index.disabled = true;
@@ -1647,6 +1648,13 @@
     if (restoreFocus && state.menuAnchor?.isConnected && state.menuAnchor.getClientRects().length && !state.menuAnchor.disabled) state.menuAnchor.focus({ preventScroll: true });
   }
 
+  function clampOpenMenu() {
+    if (!root.isConnected || els.menu.classList.contains("ba-hidden")) return;
+    const rect = els.menu.getBoundingClientRect();
+    els.menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8))}px`;
+    els.menu.style.top = `${Math.max(8, Math.min(rect.top, window.innerHeight - rect.height - 8))}px`;
+  }
+
   function toggleFolder(id) {
     if (state.expanded.has(id)) state.expanded.delete(id);
     else state.expanded.add(id);
@@ -2045,6 +2053,7 @@
   }
 
   function disposeOverlay() {
+    window.removeEventListener("resize", clampOpenMenu);
     document.removeEventListener("keydown", onKeyDown, true);
     document.removeEventListener("focusin", containDrawerFocus, true);
     state.detailResizeObserver.disconnect();
