@@ -554,7 +554,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
 
     await page.locator(".ba-folder-tree .ba-name", { hasText: /^nuevo6$/ }).click();
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Export", exact: true }).click();
+    await page.getByRole("button", { name: "More bookmark actions", exact: true }).click();
     await page.locator(".ba-menu button", { hasText: /^Export JSON$/ }).click();
     const download = await downloadPromise;
     const downloadedPath = path.join(artifacts, "scoped-export.json");
@@ -717,7 +717,7 @@ const { chromium } = require(process.env.BOOKMARK_TEST_PLAYWRIGHT || "playwright
       await overlay.mouse.click((model.content[0] + model.content[4]) / 2, (model.content[1] + model.content[5]) / 2);
     };
     await clickClosedControl("tab", "^All Bookmarks");
-    await clickClosedControl("button", "^Export$");
+    await clickClosedControl("button", "^More bookmark actions$");
     await clickClosedControl("button", "^Export JSON$");
     await overlay.waitForFunction(() => globalThis.__bookmarkListenerCount() === 1);
     assert.match(fixture.tabsCreated.at(-1).url, /^chrome-extension:\/\/fixture\/export.html\?format=json&view=all$/);

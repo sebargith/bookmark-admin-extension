@@ -41,3 +41,21 @@ test('distinct fragments and query strings save the requested full URL', async (
     assert.notEqual(result.bookmark.id, '210');
   }
 });
+
+test('recent destinations persist as bounded native IDs and prune deleted or managed folders', async () => {
+  const f = setup();
+  await f.context.rememberPopupDestination('102');
+  await f.context.rememberPopupDestination('101');
+  await f.context.rememberPopupDestination('102');
+  assert.deepEqual(Array.from(f.storage.popupRecentFolderIds), ['102', '101']);
+  f.storage.popupRecentFolderIds = ['missing', '400', '102'];
+  assert.deepEqual(Array.from((await f.context.getManagerState()).popupRecentFolderIds), ['102']);
+});
+
+test('optional recent-folder storage failure does not turn a successful native move into a failure', async () => {
+  const f = setup(); const { bookmark } = await f.context.beginPopupSave();
+  f.context.rememberPopupDestination = async () => { throw new Error('Storage failure'); };
+  const result = await f.context.movePopupBookmark({ id: bookmark.id, url: bookmark.url, expectedParentId: '2', folderId: '102' });
+  assert.equal(result.bookmark.parentId, '102');
+  assert.equal(result.recentFolderIds, null);
+});

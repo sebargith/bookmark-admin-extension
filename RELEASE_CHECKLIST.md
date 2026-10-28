@@ -13,15 +13,19 @@ Before publishing changes:
 - Confirm no packaged `.crx`, `.zip`, `.pem`, `.env`, or build output files are staged.
 - Reload the unpacked extension in Chrome and test:
   - save current page from popup
-  - open the actual toolbar popup and verify its 360px layout, single-line heading and readable Save/All/New controls
-  - save to `All`
+  - open the actual toolbar popup and verify its 360px layout, single-line heading and readable saved-folder path
+  - verify a new web page is saved in Other bookmarks with one toolbar click
+  - search destination folders and verify mouse selection moves the same bookmark
+  - browse folder choices with arrows/typeahead without moving, then commit with Enter
+  - create a folder while a non-matching search is active and verify the bookmark moves into it
   - create folder
   - open full manager overlay
   - expand folders
-  - select a nested folder, switch views, and reopen the manager to verify navigation memory
+  - select a nested folder, switch views to verify folder-location memory, and reopen to verify Recently saved is the default
   - use breadcrumbs and expand/collapse controls without changing the selected location
   - rename, move, and remove the selected folder in Chrome and verify the manager refreshes safely
-  - confirm manager navigation does not change the compact popup's last save destination
+  - confirm manager navigation does not change the popup's Other bookmarks fallback for new pages
+  - verify the manager's actions menu provides visible-link checking, visible-page keywords and JSON/HTML export
   - recognize a numbered capture, rename and move it, and verify it remains in Saved Windows
   - confirm/cancel reopening a saved window; verify order, repeated URLs and unsupported-link skips
   - move one captured bookmark and all capture contents to Library, then undo each operation

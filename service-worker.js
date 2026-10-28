@@ -9,7 +9,8 @@ const STORAGE_KEYS = {
   REVISION: "bookmarkRevision",
   NAVIGATION: "managerNavigation",
   SAVED_WINDOWS: "savedWindows",
-  PENDING_POPUP_MODE: "pendingPopupMode"
+  PENDING_POPUP_MODE: "pendingPopupMode",
+  POPUP_RECENTS: "popupRecentFolderIds"
 };
 
 let suppressEventsUntil = 0;
@@ -19,6 +20,7 @@ let metadataWriteQueue = Promise.resolve();
 let navigationWriteQueue = Promise.resolve();
 let savedWindowWriteQueue = Promise.resolve();
 let bookmarkBatchQueue = Promise.resolve();
+let popupRecentQueue = Promise.resolve();
 const reopeningWindows = new Map();
 
 function updateSavedWindowRecords(root, patches = {}) {
@@ -653,6 +655,7 @@ async function getManagerState() {
   const auxiliary = await storageGet({
     [STORAGE_KEYS.UNDO]: null,
     [STORAGE_KEYS.NAVIGATION]: null,
+    [STORAGE_KEYS.POPUP_RECENTS]: [],
     [STORAGE_KEYS.REVISION]: 0
   });
   const captureRecords = await updateSavedWindowRecords(context.root);
@@ -678,6 +681,8 @@ async function getManagerState() {
     defaultFolder: context.area.defaultFolder,
     settings: context.area.settings,
     navigation: normalizeManagerNavigation(auxiliary[STORAGE_KEYS.NAVIGATION]),
+    popupRecentFolderIds: (Array.isArray(auxiliary[STORAGE_KEYS.POPUP_RECENTS]) ? auxiliary[STORAGE_KEYS.POPUP_RECENTS] : [])
+      .filter((id) => isFolder(context.nodeMap.get(id)) && id !== context.root.id && !isReadOnlyNode(context.nodeMap.get(id), context.nodeMap)).slice(0, 4),
     metadataByUrl,
     ...flattenManagedData(context.root, metadataByUrl),
     savedWindowFolderIds,
@@ -934,6 +939,18 @@ function beginPopupSave() {
   return pending;
 }
 
+function rememberPopupDestination(id) {
+  const task = popupRecentQueue.catch(() => {}).then(async () => {
+    const stored = await storageGet({ [STORAGE_KEYS.POPUP_RECENTS]: [] });
+    const previous = stored[STORAGE_KEYS.POPUP_RECENTS];
+    const recentFolderIds = [...new Set([id, ...(Array.isArray(previous) ? previous.filter((value) => typeof value === "string") : [])])].slice(0, 4);
+    await storageSet({ [STORAGE_KEYS.POPUP_RECENTS]: recentFolderIds });
+    return recentFolderIds;
+  });
+  popupRecentQueue = task;
+  return task;
+}
+
 async function movePopupBookmark(payload = {}) {
   const context = await getBookmarkContext();
   const node = context.nodeMap.get(payload.id);
@@ -944,7 +961,9 @@ async function movePopupBookmark(payload = {}) {
   const target = writableFolder(payload.folderId, context);
   if (target.id === node.parentId) return { bookmark: node };
   const bookmark = await withInternalMutation(() => chromeCall(chrome.bookmarks.move.bind(chrome.bookmarks), node.id, { parentId: target.id }));
-  return { bookmark };
+  // Bookmark success must not depend on optional destination-history storage.
+  const recentFolderIds = await rememberPopupDestination(target.id).catch(() => null);
+  return { bookmark, recentFolderIds };
 }
 
 async function quickSaveCurrentPage(payload = {}) {

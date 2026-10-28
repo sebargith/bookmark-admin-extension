@@ -124,9 +124,7 @@
         </select>
         <select class="ba-select ba-domain-filter" aria-label="Domain"><option value="">All domains</option></select>
         <label class="ba-duplicates-control"><input class="ba-duplicates-filter" type="checkbox">Duplicates only</label>
-        <button class="ba-button ba-blue ba-check" type="button"><img src="${ICONS.check}" alt=""><span>Check</span></button>
-        <button class="ba-button ba-blue ba-index" type="button"><img src="${ICONS.index}" alt=""><span>Index</span></button>
-        <button class="ba-button ba-export" type="button"><img src="${ICONS.export}" alt=""><span>Export</span></button>
+        <button class="ba-icon-btn ba-export" type="button" aria-label="More bookmark actions" title="More bookmark actions" aria-haspopup="true">...</button>
         <div class="ba-filter-summary">
           <span class="ba-search-scope" id="ba-search-scope" role="status"></span>
           <div class="ba-active-filters" role="group" aria-label="Active filters" hidden></div>
@@ -207,8 +205,6 @@
     duplicatesFilter: root.querySelector(".ba-duplicates-filter"),
     searchScope: root.querySelector(".ba-search-scope"),
     activeFilters: root.querySelector(".ba-active-filters"),
-    check: root.querySelector(".ba-check"),
-    index: root.querySelector(".ba-index"),
     export: root.querySelector(".ba-export"),
     newFolder: root.querySelector(".ba-new-folder"),
     tree: root.querySelector(".ba-folder-tree"),
@@ -232,15 +228,13 @@
   const filterOptions = filterPanel.lastElementChild;
   filterOptions.append(els.dateFilter, els.issueFilter, els.domainFilter, root.querySelector(".ba-duplicates-control"));
   const toolbar = root.querySelector(".ba-toolbar");
-  toolbar.insertBefore(filterPanel, els.check);
+  toolbar.insertBefore(filterPanel, els.export);
   bindEvents();
   load().then(() => els.search.focus({ preventScroll: true })).catch(showError);
 
   function bindEvents() {
     window.addEventListener("resize", clampOpenMenu);
     els.newFolder.disabled = true;
-    els.check.disabled = true;
-    els.index.disabled = true;
     els.export.disabled = true;
     host.addEventListener("bookmark-admin-dismiss", (event) => {
       event.preventDefault();
@@ -337,11 +331,14 @@
       state.duplicatesOnly = els.duplicatesFilter.checked;
       renderBookmarks();
     });
-    els.check.addEventListener("click", () => checkVisible().catch(showError));
-    els.index.addEventListener("click", () => refreshIndex(visibleBookmarkIds()).catch(showError));
     els.export.addEventListener("click", (event) => {
       event.stopPropagation();
       showMenu(event, [
+        ...(visibleBookmarkIds().length ? [
+          { label: "Check visible links", action: checkVisible },
+          { label: "Refresh visible page keywords", action: () => refreshIndex(visibleBookmarkIds()) },
+          { separator: true }
+        ] : []),
         { label: "Export JSON", action: exportJson },
         { label: "Export HTML", action: exportHtml }
       ]);
@@ -649,7 +646,7 @@
     const parentId = newFolderParent();
     els.newFolder.disabled = !parentId || state.data.readOnlyNodeIds.includes(parentId);
     els.newFolder.title = parentId ? "New folder" : "Select a destination folder";
-    els.export.title = `Export ${state.selectedFolderId ? folderById(state.selectedFolderId).title : label}`;
+    els.export.title = `Actions for ${state.selectedFolderId ? folderById(state.selectedFolderId).title : label}`;
     els.export.disabled = false;
     for (const tab of els.tabs) {
       const selected = tab.dataset.view === state.view;
@@ -848,8 +845,6 @@
     const showFolders = folder && !state.search && state.dateFilter === "all" && state.issueFilter === "all" && !state.domainFilter && !state.duplicatesOnly;
     const childFolders = showFolders ? (folder.children || []).filter((node) => !node.url) : [];
     for (const child of childFolders) els.bookmarkList.append(renderFolderNode(child, false, 0, true));
-    els.check.disabled = !bookmarks.length;
-    els.index.disabled = !bookmarks.length;
 
     if (!bookmarks.length && !childFolders.length) {
       const filtered = state.search || state.dateFilter !== "all" || state.issueFilter !== "all" || state.domainFilter || state.duplicatesOnly;

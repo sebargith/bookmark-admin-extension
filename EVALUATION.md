@@ -550,3 +550,24 @@ the actual-worker popup browser regression. Desktop and narrow screenshots
 were inspected. Evidence is stored outside the repository under
 bookmark-admin-verification/redesign-step2. All profiles and data are synthetic.
 Native toolbar right-click integration still requires a manual check after reload.
+
+## Redesign step 3 - version 0.5.2
+
+Independent final scores: functionality 9/10, visuals 8/10, usability 9/10
+(8.67/10 overall). Two targeted revisions corrected filtered folder creation,
+keyboard navigation committing too early, duplicate recent-folder labels, and
+clicking an already keyboard-highlighted option. No remaining bugs reproduced
+in the evaluator's final targeted scope.
+
+Parent validation passed 78 unit tests, 479 manager browser assertions and the
+actual-worker popup browser test. Popup regression coverage includes search,
+empty results, recent destinations, creating under a nonmatching search, keyboard
+browsing and Enter, mixed keyboard/mouse selection, Escape/focus return, width,
+assets, reduced motion and unsupported pages. Optional recent-folder storage
+failure is tested independently from successful bookmark moves.
+
+Desktop, narrow manager and popup screenshots were inspected. Evidence is in
+bookmark-admin-verification/redesign-step3 outside the repository. All bookmarks
+and Chrome profiles used in tests were synthetic. No permissions were added.
+Actual Chrome toolbar popup/menu hosting still requires manual verification
+after reloading the unpacked extension.

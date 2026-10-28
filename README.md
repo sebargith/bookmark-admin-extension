@@ -16,6 +16,7 @@ Chrome will create a managed bookmark root named `Bookmark Admin`. Clicking the 
 
 - Save the current page from the compact toolbar popup, page context menu, or `Alt+Shift+B`.
 - Change the saved bookmark's destination across writable Chrome folders, or create a subfolder inline and move it there.
+- Search destination folders by name or full path, choose a recent destination, and read the saved folder path in the popup. Browse the folder list with the keyboard and press Enter to move; mouse selection moves immediately.
 - Save all open Chrome windows into separate numbered folders on the bookmarks bar with `Save all windows`.
 - See saved-window dates and current tab counts, reopen web pages as a window after confirmation, and keep recognized captures identifiable after renaming or moving them.
 - Move one captured bookmark or a capture's contents into a Library folder using a destination picker, preserving native IDs, notes, folder structure, and move undo.
@@ -25,6 +26,7 @@ Chrome will create a managed bookmark root named `Bookmark Admin`. Clicking the 
 - Create folders and move bookmarks or folders by drag and drop.
 - Search title, URL, folder path, saved notes, and automatically extracted page keywords.
 - Filter bookmarks by time added, link status, and usage; sort by newest, oldest, title, or use count.
+- Open advanced filters on demand. The manager's `...` actions menu contains visible-link checking, visible-page keyword refresh, and folder/view export.
 - Store generated keywords, notes, open counts, and dead-link status in extension local storage.
 - Detect duplicates before saving and update metadata instead of creating another copy.
 - Browse folders in the sidebar and expand subfolders inline in the main contents list, with shared bookmark selection and counts.

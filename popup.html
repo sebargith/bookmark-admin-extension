@@ -18,23 +18,30 @@
         </div>
       </header>
 
-      <label class="field">
+      <div id="destinationSummary" class="field">
         <span>Saved in</span>
-        <select id="saveFolder" disabled></select>
-      </label>
-
-      <div class="mini-actions">
-        <button id="createFolderMini" type="button" disabled>
-          <img src="assets/icons/folder-open.svg" alt="">
-          <span>New folder</span>
+        <button id="chooseFolder" class="destination-button" type="button" aria-expanded="false" aria-controls="folderPicker" disabled>
+          <img src="assets/icons/folder-selected.svg" alt=""><span id="savedPath">Loading folders...</span><span aria-hidden="true">&#8250;</span>
         </button>
       </div>
+      <section id="folderPicker" aria-label="Choose a folder" hidden>
+        <div class="picker-header"><button id="closePicker" type="button" title="Back to bookmark" aria-label="Back to bookmark">&#8592;</button><h2>Choose a folder</h2></div>
+        <label class="field"><span class="sr-only">Search folders</span><input id="folderSearch" type="search" placeholder="Search folders" autocomplete="off"></label>
+        <div class="folder-browser">
+          <section id="recentFolders" aria-label="Recent folders" hidden><h3>Recent</h3><div id="recentFolderList"></div></section>
+          <label class="field"><span>Folders</span><select id="saveFolder" size="4" aria-label="Destination folder" disabled></select></label>
+          <p id="folderEmpty" class="compact" hidden>No folders found</p>
+        </div>
+        <p id="selectedPath" class="selected-path"></p>
+        <button id="createFolderMini" class="new-folder-button" type="button" disabled><img src="assets/icons/folder-open.svg" alt=""><span>New folder</span></button>
       <form id="folderForm" hidden>
         <label class="field">Folder name<input id="folderName" maxlength="200" required></label>
         <div class="folder-form-actions"><button class="primary" type="submit">Create and move</button><button id="cancelFolder" type="button">Cancel</button></div>
       </form>
+      </section>
       <p id="saveFeedback" class="compact" role="status" aria-live="polite">Saving bookmark...</p>
 
+      <div id="defaultActions" class="default-actions">
       <button id="saveAllWindows" class="windows-button" type="button">
         <img src="assets/icons/backup-export.svg" alt="">
         <span>Save all windows</span>
@@ -45,6 +52,7 @@
         <img src="assets/icons/open-manager.svg" alt="">
         <span>Open full manager</span>
       </button>
+      </div>
     </main>
 
     <script src="popup.js"></script>

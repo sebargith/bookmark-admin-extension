@@ -15,8 +15,13 @@ Three user-requested prompts, with one commit per step.
    Sidebar folders contain no bookmark rows. Expanded main-pane folders use the
    same bookmark rows, counts and selection model as other results. Domain filters
    cover subfolders even before search. Advanced filters open on demand.
-3. Pending: remaining visual polish, searchable destination picker, advanced
-   filters and contextual controls, matching the approved navy/violet previews.
+3. Complete (0.5.2): navy/violet visual polish, searchable popup destination
+   picker, and contextual maintenance controls. The popup shows the selected
+   full path, two recent destinations from a locally retained four-folder history,
+   inline creation and empty-search feedback. Mouse selection moves immediately;
+   keyboard browsing commits with Enter. Escape returns to the saved bookmark.
+   Duplicate folder paths are distinguished by native IDs. Manager link checking,
+   keyword refresh and JSON/HTML export are available through its actions menu.
 
 Validation uses synthetic bookmarks and isolated browser profiles. Native
 toolbar-popup hosting still requires a manual check after extension reload.
