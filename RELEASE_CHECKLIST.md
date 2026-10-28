@@ -13,6 +13,7 @@ Before publishing changes:
 - Confirm no packaged `.crx`, `.zip`, `.pem`, `.env`, or build output files are staged.
 - Reload the unpacked extension in Chrome and test:
   - save current page from popup
+  - open the actual toolbar popup and verify its 360px layout, single-line heading and readable Save/All/New controls
   - save to `All`
   - create folder
   - open full manager overlay

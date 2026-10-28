@@ -87,6 +87,8 @@ The manager and quick-save popup use visible keyboard focus, readable dark surfa
 
 Phase-nine visual/accessibility evaluation: 9.00/10 after one optional menu-resize revision. Verification passes 68 unit tests, 465 manager browser assertions and 10 popup browser tests with synthetic data. All nine implementation steps are complete; native loaded-extension and manual accessibility verification remain pending. See [EVALUATION.md](EVALUATION.md).
 
+Version 0.4.10 restores the established dark blue/violet palette after the step-nine color change. The compact popup declares a 360px intrinsic/minimum document width rather than limiting itself to the popup host's initial viewport. This prevents the header and Save/All/New row from collapsing during narrow startup sizing. Focus, contrast, reduced-motion and other accessibility fixes remain in place. Native toolbar-popup sizing still needs confirmation after reloading the installed extension.
+
 Phase-one independent evaluation: 7.3/10 after one revision. See [EVALUATION.md](EVALUATION.md) for findings, verification, and remaining test limits.
 
 Phase-two compact-list evaluation: 8.3/10 on its first review, with 23 passing unit tests and 61 passing browser assertions using synthetic data.

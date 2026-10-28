@@ -496,3 +496,25 @@ loaded extension with real native bookmark events. No personal profile/data or
 external-page access was used. Forced colors were browser-emulated. Actual
 screen-reader output, touch/assistive hardware, native installation/MV3 lifecycle
 and security certification remain unverified.
+
+## Post-roadmap: Popup width and palette restoration
+
+Version 0.4.10 addresses the reported collapsed popup and unwanted palette change.
+Commit `ba7ed76` removes the viewport-dependent body width cap and declares a
+360px intrinsic/minimum width on html/body. It restores the established dark
+blue/violet palette in popup and manager while keeping accessibility behavior.
+Commit `ed0f33b` adds a narrow-bootstrap regression: a 180px initial viewport must
+still expose a 360px document, with an unwrapped heading and readable controls
+after simulated host sizing. Native toolbar sizing is not established by this
+simulation and still requires verification after extension reload.
+
+Main checks pass: 68 unit tests, 465 manager assertions and 11 popup tests, zero
+page errors. The independent evaluator reran all 11 popup tests and inspected
+normal/reduced-motion/bootstrap screenshots, accepted at functionality 9/10,
+visuals 9/10, usability 9/10 (overall 9.00/10), with no actionable findings or
+revision required. Minimum primary-text contrast: 5.47:1. Unit/manager results
+were not independently rerun for this fix. Evidence: `popup-width-fix`,
+`popup-width-evaluator`, and `palette-restore-manager` in the external verification
+workspace. Only synthetic data/temporary Chrome profiles were used. Permissions,
+runtime logic and storage formats are unchanged; native loaded-extension sizing
+and assistive-hardware integration remain unverified.
